@@ -1,0 +1,39 @@
+replicator:
+  units:
+    - id: "replicator-1"
+
+      source:
+        endpoint: "tcp://10.0.0.5:502"
+        unit_id: 1
+        timeout_ms: 2000
+
+      targets:
+        - id: "mma-main"
+          endpoint: "tcp://127.0.0.1:1502"
+          memories:
+            - memory_id: 0
+            - memory_id: 1
+
+        - id: "mma-backup"
+          endpoint: "tcp://127.0.0.1:1602"
+          memories:
+            - memory_id: 0
+
+      poll:
+        interval_ms: 1000
+
+    - id: "replicator-2"
+
+      source:
+        endpoint: "tcp://10.0.0.6:502"
+        unit_id: 2
+        timeout_ms: 1500
+
+      targets:
+        - id: "mma-main"
+          endpoint: "tcp://127.0.0.1:1502"
+          memories:
+            - memory_id: 2
+
+      poll:
+        interval_ms: 500
