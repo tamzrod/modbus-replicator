@@ -1,39 +1,85 @@
 replicator:
   units:
-    - id: "replicator-1"
+    - id: "device-1"
 
       source:
         endpoint: "tcp://10.0.0.5:502"
         unit_id: 1
         timeout_ms: 2000
 
+      reads:
+        - fc: 1          # coils
+          address: 0
+          quantity: 32
+
+        - fc: 2          # discrete inputs
+          address: 0
+          quantity: 32
+
+        - fc: 3          # holding registers
+          address: 0
+          quantity: 100
+
+        - fc: 4          # input registers
+          address: 0
+          quantity: 50
+
       targets:
-        - id: "mma-main"
+        - id: 1
           endpoint: "tcp://127.0.0.1:1502"
           memories:
             - memory_id: 0
-            - memory_id: 1
-
-        - id: "mma-backup"
-          endpoint: "tcp://127.0.0.1:1602"
-          memories:
-            - memory_id: 0
+              offsets:
+                2: 32
+                3: 64
+                4: 164
 
       poll:
         interval_ms: 1000
 
-    - id: "replicator-2"
+
+    - id: "device-2"
 
       source:
         endpoint: "tcp://10.0.0.6:502"
+        unit_id: 1
+        timeout_ms: 2000
+
+      reads:
+        - fc: 3          # holding registers
+          address: 0
+          quantity: 100
+
+      targets:
+        - id: 1
+          endpoint: "tcp://127.0.0.1:1502"
+          memories:
+            - memory_id: 0
+              offsets:
+                3: 214
+
+      poll:
+        interval_ms: 1000
+
+
+    - id: "device-3"
+
+      source:
+        endpoint: "tcp://10.0.0.7:502"
         unit_id: 2
         timeout_ms: 1500
 
+      reads:
+        - fc: 4          # input registers
+          address: 0
+          quantity: 40
+
       targets:
-        - id: "mma-main"
-          endpoint: "tcp://127.0.0.1:1502"
+        - id: 2
+          endpoint: "tcp://127.0.0.1:1602"
           memories:
-            - memory_id: 2
+            - memory_id: 1
+              offsets: {}
 
       poll:
         interval_ms: 500
