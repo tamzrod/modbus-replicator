@@ -3,17 +3,17 @@ package writer
 
 import "modbus-replicator/internal/poller"
 
-// MemoryDest is one MMA memory destination inside an endpoint.
+// MemoryDest is one write destination inside an endpoint.
+// Offsets are per-FC address deltas; missing FC => 0.
 type MemoryDest struct {
-	MemoryID uint16
-	Offsets  map[int]uint16 // per-FC offset deltas; missing FC => 0
+	Offsets map[int]uint16
 }
 
-// TargetEndpoint is one target endpoint (TCP) with one or more memory destinations.
+// TargetEndpoint is one target endpoint (TCP) with one or more destinations.
 type TargetEndpoint struct {
-	TargetID  uint32
-	Endpoint  string
-	Memories  []MemoryDest
+	TargetID uint32
+	Endpoint string
+	Memories []MemoryDest
 }
 
 // Plan is the fully-built write plan for one unit.

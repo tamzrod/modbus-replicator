@@ -6,11 +6,11 @@ import (
 	"time"
 
 	cfg "modbus-replicator/internal/config"
-	wmodbus "modbus-replicator/internal/writer/modbus"
+	ingest "modbus-replicator/internal/writer/ingest"
 )
 
 // BuildPlan converts one unit config into a Writer Plan.
-// Assumes config has already passed conflict validation.
+// Assumes config has already passed validation.
 func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 	if u.ID == "" {
 		return Plan{}, errors.New("writer: unit.id required")
@@ -25,11 +25,9 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 		}
 
 		for _, m := range t.Memories {
-			md := MemoryDest{
-				MemoryID: m.MemoryID,
-				Offsets:  m.Offsets, // map[int]uint16 (delta map)
-			}
-			ep.Memories = append(ep.Memories, md)
+			ep.Memories = append(ep.Memories, MemoryDest{
+				Offsets: m.Offsets,
+			})
 		}
 
 		plan.Targets = append(plan.Targets, ep)
@@ -38,18 +36,22 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 	return plan, nil
 }
 
-// BuildEndpointClients creates one TCP client per unique endpoint.
-func BuildEndpointClients(u cfg.UnitConfig) (map[string]*wmodbus.EndpointClient, func() error, error) {
+// BuildEndpointClients creates Raw Ingest clients and returns them
+// as writer.endpointClient interfaces.
+func BuildEndpointClients(
+	u cfg.UnitConfig,
+) (map[string]endpointClient, func() error, error) {
+
 	unique := map[string]struct{}{}
 	for _, t := range u.Targets {
 		unique[t.Endpoint] = struct{}{}
 	}
 
-	clients := make(map[string]*wmodbus.EndpointClient)
+	clients := make(map[string]endpointClient)
 	var closers []func() error
 
 	for endpoint := range unique {
-		c, err := wmodbus.NewEndpointClient(wmodbus.Config{
+		c, err := ingest.NewEndpointClient(ingest.Config{
 			Endpoint: endpoint,
 			Timeout:  time.Duration(u.Source.TimeoutMs) * time.Millisecond,
 		})
@@ -59,7 +61,14 @@ func BuildEndpointClients(u cfg.UnitConfig) (map[string]*wmodbus.EndpointClient,
 			}
 			return nil, nil, err
 		}
+
+		// IMPORTANT:
+		// *ingest.EndpointClient now implements:
+		//   WriteBits(...)
+		//   WriteRegisters(...)
+		// which exactly matches writer.endpointClient.
 		clients[endpoint] = c
+
 		closers = append(closers, c.Close)
 	}
 

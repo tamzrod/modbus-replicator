@@ -9,23 +9,26 @@ import (
 	"modbus-replicator/internal/poller"
 )
 
-// endpointClient is the minimal write surface the writer needs.
-// Transport-specific implementations live elsewhere.
+// endpointClient is the exact contract the writer uses.
+// IMPORTANT: There must be NO other version of this interface anywhere.
 type endpointClient interface {
-	WriteCoils(unitID uint8, addr uint16, bits []bool) error
-	WriteRegisters(unitID uint8, addr uint16, regs []uint16) error
+	WriteBits(area byte, unitID uint8, addr uint16, bits []bool) error
+	WriteRegisters(area byte, unitID uint8, addr uint16, regs []uint16) error
 }
 
-type modbusWriter struct {
+type writerImpl struct {
 	plan    Plan
-	clients map[string]endpointClient // endpoint -> client
+	clients map[string]endpointClient
 }
 
-func NewModbusWriter(plan Plan, clients map[string]endpointClient) Writer {
-	return &modbusWriter{plan: plan, clients: clients}
+func New(plan Plan, clients map[string]endpointClient) Writer {
+	return &writerImpl{
+		plan:    plan,
+		clients: clients,
+	}
 }
 
-func (w *modbusWriter) Write(res poller.PollResult) error {
+func (w *writerImpl) Write(res poller.PollResult) error {
 	if res.Err != nil {
 		return res.Err
 	}
@@ -35,40 +38,48 @@ func (w *modbusWriter) Write(res poller.PollResult) error {
 	for _, tgt := range w.plan.Targets {
 		cli := w.clients[tgt.Endpoint]
 		if cli == nil {
-			errs = append(errs, fmt.Sprintf("writer: missing client for endpoint %s", tgt.Endpoint))
+			errs = append(errs, fmt.Sprintf(
+				"writer: missing client for endpoint %s",
+				tgt.Endpoint,
+			))
 			continue
 		}
 
-		for _, mem := range tgt.Memories {
-			unitID, ok := asUnitID(mem.MemoryID)
-			if !ok {
-				errs = append(errs, fmt.Sprintf("writer: memory_id %d out of range", mem.MemoryID))
-				continue
-			}
+		if tgt.TargetID > 255 {
+			errs = append(errs, fmt.Sprintf(
+				"writer: target unit id %d out of range",
+				tgt.TargetID,
+			))
+			continue
+		}
+		unitID := uint8(tgt.TargetID)
 
+		for _, mem := range tgt.Memories {
 			for _, b := range res.Blocks {
-				off := offsetForFC(mem.Offsets, b.FC)
-				dstAddr := off + b.Address
+
+				area := byte(b.FC)
+				dstAddr := offsetForFC(mem.Offsets, b.FC) + b.Address
 
 				switch b.FC {
 				case 1, 2:
-					if err := cli.WriteCoils(unitID, dstAddr, b.Bits); err != nil {
+					if err := cli.WriteBits(area, unitID, dstAddr, b.Bits); err != nil {
 						errs = append(errs, fmt.Sprintf(
-							"writer: ep=%s mem=%d fc=%d addr=%d err=%v",
-							tgt.Endpoint, mem.MemoryID, b.FC, dstAddr, err,
+							"writer: ep=%s unit=%d fc=%d addr=%d err=%v",
+							tgt.Endpoint, unitID, b.FC, dstAddr, err,
 						))
 					}
-
 				case 3, 4:
-					if err := cli.WriteRegisters(unitID, dstAddr, b.Registers); err != nil {
+					if err := cli.WriteRegisters(area, unitID, dstAddr, b.Registers); err != nil {
 						errs = append(errs, fmt.Sprintf(
-							"writer: ep=%s mem=%d fc=%d addr=%d err=%v",
-							tgt.Endpoint, mem.MemoryID, b.FC, dstAddr, err,
+							"writer: ep=%s unit=%d fc=%d addr=%d err=%v",
+							tgt.Endpoint, unitID, b.FC, dstAddr, err,
 						))
 					}
-
 				default:
-					errs = append(errs, fmt.Sprintf("writer: unsupported fc %d", b.FC))
+					errs = append(errs, fmt.Sprintf(
+						"writer: unsupported fc %d",
+						b.FC,
+					))
 				}
 			}
 		}
@@ -89,11 +100,4 @@ func offsetForFC(offsets map[int]uint16, fc uint8) uint16 {
 		return v
 	}
 	return 0
-}
-
-func asUnitID(memoryID uint16) (uint8, bool) {
-	if memoryID > 255 {
-		return 0, false
-	}
-	return uint8(memoryID), true
 }
