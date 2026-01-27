@@ -157,3 +157,73 @@ func TestWriter_SkipDataOnPollError(t *testing.T) {
 		t.Fatalf("expected no writes on poll error")
 	}
 }
+
+// Edge case: no targets configured
+func TestWriter_NoTargets_IsNoOp(t *testing.T) {
+	plan := Plan{
+		UnitID:  "unit-1",
+		Targets: nil,
+	}
+
+	fake := &fakeEndpointClient{}
+	w := New(plan, map[string]endpointClient{
+		"ep1": fake,
+	})
+
+	res := poller.PollResult{
+		UnitID: "unit-1",
+		At:     time.Now(),
+		Blocks: []poller.BlockResult{
+			{
+				FC:        3,
+				Address:   0,
+				Quantity:  1,
+				Registers: []uint16{1},
+			},
+		},
+	}
+
+	if err := w.Write(res); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if fake.writeBitsCnt != 0 || fake.writeRegsCnt != 0 {
+		t.Fatalf("expected no writes when no targets are configured")
+	}
+}
+
+// New edge case: target endpoint has no client
+func TestWriter_MissingClient_ReturnsError(t *testing.T) {
+	plan := Plan{
+		UnitID: "unit-1",
+		Targets: []TargetEndpoint{
+			{
+				TargetID: 1,
+				Endpoint: "missing-ep",
+				Memories: []MemoryDest{
+					{Offsets: nil},
+				},
+			},
+		},
+	}
+
+	// Note: clients map intentionally does NOT include "missing-ep"
+	w := New(plan, map[string]endpointClient{})
+
+	res := poller.PollResult{
+		UnitID: "unit-1",
+		At:     time.Now(),
+		Blocks: []poller.BlockResult{
+			{
+				FC:        3,
+				Address:   0,
+				Quantity:  1,
+				Registers: []uint16{1},
+			},
+		},
+	}
+
+	if err := w.Write(res); err == nil {
+		t.Fatalf("expected error when client is missing, got nil")
+	}
+}
