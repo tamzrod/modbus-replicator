@@ -24,8 +24,13 @@ type BlockResult struct {
 
 // PollResult is a snapshot produced by one poll cycle.
 type PollResult struct {
-	UnitID   string
-	At       time.Time
-	Blocks   []BlockResult
-	Err      error // non-nil means the poll cycle failed
+	UnitID string
+	At     time.Time
+
+	// RawErrorCode is copied verbatim from the device.
+	// 0 means success; non-zero is opaque and device-defined.
+	RawErrorCode uint16
+
+	Blocks []BlockResult
+	Err    error // non-nil means the poll cycle failed
 }
