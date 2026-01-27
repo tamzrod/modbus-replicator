@@ -192,7 +192,7 @@ func TestWriter_NoTargets_IsNoOp(t *testing.T) {
 	}
 }
 
-// New edge case: target endpoint has no client
+// Edge case: target endpoint has no client
 func TestWriter_MissingClient_ReturnsError(t *testing.T) {
 	plan := Plan{
 		UnitID: "unit-1",
@@ -207,7 +207,6 @@ func TestWriter_MissingClient_ReturnsError(t *testing.T) {
 		},
 	}
 
-	// Note: clients map intentionally does NOT include "missing-ep"
 	w := New(plan, map[string]endpointClient{})
 
 	res := poller.PollResult{
@@ -225,5 +224,43 @@ func TestWriter_MissingClient_ReturnsError(t *testing.T) {
 
 	if err := w.Write(res); err == nil {
 		t.Fatalf("expected error when client is missing, got nil")
+	}
+}
+
+// New edge case: TargetID out of range (>255)
+func TestWriter_TargetID_OutOfRange_ReturnsError(t *testing.T) {
+	plan := Plan{
+		UnitID: "unit-1",
+		Targets: []TargetEndpoint{
+			{
+				TargetID: 300, // out of uint8 range
+				Endpoint: "ep1",
+				Memories: []MemoryDest{
+					{Offsets: nil},
+				},
+			},
+		},
+	}
+
+	fake := &fakeEndpointClient{}
+	w := New(plan, map[string]endpointClient{
+		"ep1": fake,
+	})
+
+	res := poller.PollResult{
+		UnitID: "unit-1",
+		At:     time.Now(),
+		Blocks: []poller.BlockResult{
+			{
+				FC:        3,
+				Address:   0,
+				Quantity:  1,
+				Registers: []uint16{1},
+			},
+		},
+	}
+
+	if err := w.Write(res); err == nil {
+		t.Fatalf("expected error for TargetID out of range, got nil")
 	}
 }
