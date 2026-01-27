@@ -1,159 +1,214 @@
-# Device Status — TODO List (Locked Scope)
+# Device Status Block — Directives (AUTHORITATIVE)
 
-> **Purpose**  
-> Expose the *minimum truthful device state* via **Input Registers** using **fixed slots**.  
-> No metadata. No semantics. No frontend thinking.
-
----
-
-## 1. Slot Model (FOUNDATION)
-
-- [ ] One slot = one device
-- [ ] Slot index is **0-based**
-- [ ] Slot size is **16 input registers** (fixed)
-- [ ] Slot index configured in YAML (integer)
-- [ ] Reject dynamic slot sizing
-- [ ] Reject per-device custom layouts
+> **Status:** LOCKED  
+> **Scope:** Modbus Replicator + MMA  
+> **This document overrides all previous status drafts, todos, and notes.**
 
 ---
 
-## 2. Slot Layout (FINAL)
+## 1. Opt-In by Design
 
-**Registers used:** Input Registers (FC4) only  
-**Writers:** Replicator only  
-**Readers:** PLC / SCADA / UI / Analytics
+Device participation in the Device Status Block is **optional**.
 
-| Offset | Field | Description |
-|------:|------|-------------|
-| +0 | modbus_reply_code | Raw Modbus reply / exception code (`0 = OK`, non-zero = failure) |
-| +1 | error_seconds_lo | Error duration (LOW word) |
-| +2 | error_seconds_hi | Error duration (HIGH word) |
-| +3 | online_flag | `1 = online`, `0 = offline` |
-| +4…+15 | device_name | ASCII device name (max **24 chars**) |
+- A unit does **not** participate by default
+- A unit participates **only if** it explicitly provides a `status_slot`
+- No defaults
+- No auto-allocation
+- No implicit enablement
 
-Rules:
-- Offsets are **locked**
-- No future expansion inside the slot
-- No reordering
+If `status_slot` is absent, the unit is **status-disabled**.
 
 ---
 
-## 3. Device Name Rules
+## 2. Slot Ownership
 
-- Source: `unit.id`
+Each status-enabled unit **owns exactly one status slot**.
+
+- Ownership is declared via `status_slot`
+- The slot identifies the base of a fixed **20-slot block**
+- Slot ownership is exclusive
+
+Any slot collision is a **hard configuration error**.
+
+---
+
+## 3. Status Memory Requirement
+
+`Status_Memory` is **conditionally required**.
+
+- If **no units** enable status → `Status_Memory` may be absent
+- If **any unit** enables status → `Status_Memory.endpoint` **must exist**
+
+There is no global requirement unless status is used.
+
+---
+
+## 4. Validation Rules
+
+Validation **checks only**. It does not correct or infer.
+
+Validation must:
+- detect slot collisions
+- detect missing `Status_Memory` when required
+- detect invalid `device_name` characters
+
+Validation must not:
+- mutate configuration
+- invent values
+- normalize or truncate
+- enable status implicitly
+
+---
+
+## 5. Device Status Block Layout
+
+Each status-enabled unit owns **exactly 20 slots**.
+
+```
+Slot 0  → health_code
+Slot 1  → last_error_code
+Slot 2  → seconds_in_error
+
+Slot 3–10 → device_name (ASCII, max 16 chars)
+Slot 11–19 → RESERVED
+```
+
+Slots are **logical device slots**, not Modbus registers.
+
+---
+
+## 6. Slot Semantics
+
+### Slot 0 — health_code
+
+| Value | Meaning |
+|-----:|---------|
+| 0 | UNKNOWN / BOOT |
+| 1 | OK |
+| 2 | ERROR |
+| 3 | STALE |
+| 4 | DISABLED |
+
+---
+
+### Slot 1 — last_error_code
+
+- Raw pass-through error code
+- Written exactly as returned by the device or library
+- `0` means OK
+- No parsing
+- No remapping
+- No semantics
+
+---
+
+### Slot 2 — seconds_in_error
+
+- Type: `uint16`
+- Tick: 1 Hz
+- Increments while `health_code != OK`
+- Saturates at `65535`
+- Never wraps
+- Resets to `0` on recovery
+
+---
+
+### Slots 3–10 — device_name
+
+- Optional
 - ASCII only
-- Max **24 characters**
-- Excess characters **silently truncated**
-- Null-padded
-- No UTF-8
-- No validation errors
+- Max 16 characters
+- Written from config
+- Never used for logic
 
 ---
 
-## 4. YAML Configuration
+## 7. Authority Model
 
-- Add slot index to each unit
-- Recommended key: `slot`
-- Type: integer
-- Base: 0
-
-Example:
-
-```yaml
-replicator:
-  units:
-    - id: "SCB01MVPS01"
-      slot: 0
-```
-
-Rules:
-- YAML **must not** contain Modbus register addresses for status
-- Register base is derived internally:
+- Replicator is authoritative
+- MMA memory is volatile
+- Identity flows one way only:
 
 ```
-slot_base = slot × 16
+Config → Replicator → MMA
 ```
 
----
-
-## 5. Reply Code Handling
-
-- Use **raw Modbus reply / exception code**
-- Success = `0`
-- Timeout / transport failure → single fixed code (e.g. `255`)
-- No classification
-- No enums
-- No mapping tables
+MMA content is never trusted as source of truth.
 
 ---
 
-## 6. Error Duration Counter
+## 8. Write Strategy
 
-- Maintain `error_seconds` as uint32 (hi / lo)
-- Increment while `modbus_reply_code != 0`
-- Reset to `0` when `modbus_reply_code == 0`
-- No wall clock
-- No timestamps
-- No drift correction
+### Full Block Write (Slots 0–19)
 
-Decode rule:
+Performed **only** when:
+- Replicator starts, or
+- A previous write failed and the next write succeeds
 
-```
-error_seconds = (error_seconds_hi << 16) | error_seconds_lo
-```
+This re-asserts identity after uncertainty.
 
 ---
 
-## 7. Online Flag Logic
+### Incremental Writes
 
-- `online_flag = 1` when `modbus_reply_code == 0`
-- `online_flag = 0` when `modbus_reply_code != 0`
-- No hysteresis
-- No debounce
-- No retry semantics
+During normal operation:
+- Slot 0 → on health change
+- Slot 1 → on failure / clear on success
+- Slot 2 → once per second while in error
 
----
-
-## 8. Write Discipline
-
-- Replicator is the **only writer**
-- One write per poll cycle
-- Atomic write per slot
-- No partial updates
-- No clearing memory on silence
+The full block must **not** be written repeatedly.
 
 ---
 
-## 9. Slot Collision Rules
+## 9. Failure Model
 
-- Detect duplicate slot indices at startup
-- Fail fast on collision
-- No auto-reassignment
-- No silent overrides
+- Writes normally succeed
+- A write failure introduces doubt
+- The next successful write re-asserts identity
 
----
+There is:
+- No restart detection
+- No reads
+- No probing
+- No handshakes
 
-## 10. Explicit Non-Goals (DO NOT ADD)
-
-The following are **explicitly forbidden**:
-
-- Tags
-- Vendor / model metadata
-- Error types
-- Status enums
-- Retry counters
-- Health scores
-- Flapping detection
-- Alarms
-- Frontend hints
-
-All of the above belong **outside** the replicator.
+Only successful writes are trusted.
 
 ---
 
-## Final Locked Statement
+## 10. Data Validity Model
 
-> **Device status is a flat, fixed, slot-indexed truth table.**  
-> **It reports what happened, not what it means.**  
-> **Garbage stays at the frontend.**
+> **MMA stores facts.  
+> The Device Status Block grants permission to believe them.**
 
+- MMA data is never mutated on failure
+- No zeroing
+- No sentinels
+- No per-register quality flags
+
+Consumers decide whether data may be trusted based on status.
+
+---
+
+## 11. Explicit Non-Goals
+
+The status block must not contain:
+- analytics
+- lifetime counters
+- aggregates
+- trends
+- history
+- per-tag quality
+
+Those belong to databases and monitoring systems.
+
+---
+
+## Final Rule (DO NOT EDIT)
+
+> **Status is opt-in, slot-owned, device-level truth.  
+> Data remains untouched; status grants permission to believe it.**
+
+---
+
+**End of Document**

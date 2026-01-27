@@ -2,49 +2,48 @@
 package writer
 
 import (
+	"errors"
 	"testing"
+	"time"
 
 	"modbus-replicator/internal/poller"
 )
 
-// ---- fake endpoint client ----
+// ------------------------------------------------------------------
+// Fake endpoint client (implements endpointClient fully)
+// ------------------------------------------------------------------
 
 type fakeEndpointClient struct {
-	writes []writeCall
+	writeErr error
+
+	lastBitsAddr uint16
+	lastRegsAddr uint16
+	lastRegs     []uint16
+	lastBits     []bool
+
+	writeBitsCnt int
+	writeRegsCnt int
 }
 
-type writeCall struct {
-	unitID uint8
-	addr   uint16
-	fc     uint8
-	qty    int
+func (f *fakeEndpointClient) WriteBits(area byte, unitID uint8, addr uint16, bits []bool) error {
+	f.writeBitsCnt++
+	f.lastBitsAddr = addr
+	f.lastBits = bits
+	return f.writeErr
 }
 
-func (f *fakeEndpointClient) WriteCoils(unitID uint8, addr uint16, bits []bool) error {
-	f.writes = append(f.writes, writeCall{
-		unitID: unitID,
-		addr:   addr,
-		fc:     1,
-		qty:    len(bits),
-	})
-	return nil
+func (f *fakeEndpointClient) WriteRegisters(area byte, unitID uint8, addr uint16, regs []uint16) error {
+	f.writeRegsCnt++
+	f.lastRegsAddr = addr
+	f.lastRegs = regs
+	return f.writeErr
 }
 
-func (f *fakeEndpointClient) WriteRegisters(unitID uint8, addr uint16, regs []uint16) error {
-	f.writes = append(f.writes, writeCall{
-		unitID: unitID,
-		addr:   addr,
-		fc:     3,
-		qty:    len(regs),
-	})
-	return nil
-}
+// ------------------------------------------------------------------
+// Tests
+// ------------------------------------------------------------------
 
-// ---- tests ----
-
-func TestWriter_OffsetMathPerFC(t *testing.T) {
-	fake := &fakeEndpointClient{}
-
+func TestWriter_DataWrite_Success(t *testing.T) {
 	plan := Plan{
 		UnitID: "unit-1",
 		Targets: []TargetEndpoint{
@@ -53,10 +52,8 @@ func TestWriter_OffsetMathPerFC(t *testing.T) {
 				Endpoint: "ep1",
 				Memories: []MemoryDest{
 					{
-						MemoryID: 1,
 						Offsets: map[int]uint16{
-							1: 10,  // coils
-							3: 100, // holding registers
+							3: 100,
 						},
 					},
 				},
@@ -64,18 +61,21 @@ func TestWriter_OffsetMathPerFC(t *testing.T) {
 		},
 	}
 
-	w := &modbusWriter{
-		plan: plan,
-		clients: map[string]endpointClient{
-			"ep1": fake,
-		},
-	}
+	fake := &fakeEndpointClient{}
+	w := New(plan, map[string]endpointClient{
+		"ep1": fake,
+	})
 
 	res := poller.PollResult{
 		UnitID: "unit-1",
+		At:     time.Now(),
 		Blocks: []poller.BlockResult{
-			{FC: 1, Address: 5, Quantity: 4, Bits: []bool{true, false, true, false}},
-			{FC: 3, Address: 2, Quantity: 3, Registers: []uint16{1, 2, 3}},
+			{
+				FC:        3,
+				Address:   10,
+				Quantity:  2,
+				Registers: []uint16{11, 22},
+			},
 		},
 	}
 
@@ -83,22 +83,16 @@ func TestWriter_OffsetMathPerFC(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if len(fake.writes) != 2 {
-		t.Fatalf("expected 2 writes, got %d", len(fake.writes))
+	if fake.writeRegsCnt != 1 {
+		t.Fatalf("expected 1 register write, got %d", fake.writeRegsCnt)
 	}
 
-	if fake.writes[0].addr != 15 { // 10 + 5
-		t.Fatalf("expected coils addr 15, got %d", fake.writes[0].addr)
-	}
-
-	if fake.writes[1].addr != 102 { // 100 + 2
-		t.Fatalf("expected regs addr 102, got %d", fake.writes[1].addr)
+	if fake.lastRegsAddr != 110 {
+		t.Fatalf("expected addr 110, got %d", fake.lastRegsAddr)
 	}
 }
 
-func TestWriter_DefaultOffsetZero(t *testing.T) {
-	fake := &fakeEndpointClient{}
-
+func TestWriter_DataWrite_Error(t *testing.T) {
 	plan := Plan{
 		UnitID: "unit-1",
 		Targets: []TargetEndpoint{
@@ -106,33 +100,60 @@ func TestWriter_DefaultOffsetZero(t *testing.T) {
 				TargetID: 1,
 				Endpoint: "ep1",
 				Memories: []MemoryDest{
-					{
-						MemoryID: 1,
-						Offsets:  nil, // default zero
-					},
+					{Offsets: nil},
 				},
 			},
 		},
 	}
 
-	w := &modbusWriter{
-		plan: plan,
-		clients: map[string]endpointClient{
-			"ep1": fake,
-		},
+	fake := &fakeEndpointClient{
+		writeErr: errors.New("fail"),
 	}
+
+	w := New(plan, map[string]endpointClient{
+		"ep1": fake,
+	})
 
 	res := poller.PollResult{
+		UnitID: "unit-1",
+		At:     time.Now(),
 		Blocks: []poller.BlockResult{
-			{FC: 3, Address: 20, Quantity: 2, Registers: []uint16{9, 9}},
+			{
+				FC:        3,
+				Address:   0,
+				Quantity:  1,
+				Registers: []uint16{1},
+			},
 		},
 	}
 
-	if err := w.Write(res); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err := w.Write(res); err == nil {
+		t.Fatalf("expected writer error, got nil")
+	}
+}
+
+func TestWriter_SkipDataOnPollError(t *testing.T) {
+	plan := Plan{
+		UnitID: "unit-1",
 	}
 
-	if fake.writes[0].addr != 20 {
-		t.Fatalf("expected addr 20, got %d", fake.writes[0].addr)
+	fake := &fakeEndpointClient{}
+	w := New(plan, map[string]endpointClient{
+		"ep1": fake,
+	})
+
+	res := poller.PollResult{
+		UnitID: "unit-1",
+		At:     time.Now(),
+		Err:    errors.New("poll failed"),
+	}
+
+	// Poll error is NOT a writer error
+	if err := w.Write(res); err != nil {
+		t.Fatalf("unexpected writer error: %v", err)
+	}
+
+	if fake.writeBitsCnt != 0 || fake.writeRegsCnt != 0 {
+		t.Fatalf("expected no writes on poll error")
 	}
 }

@@ -1,31 +1,73 @@
 replicator:
+
+  Status_Memory:
+    endpoint: "127.0.0.1:11502"
+
   units:
-    - id: "replicate-1-to-2"
+    # ------------------------------------------------------------
+    # STATUS-ENABLED UNIT
+    # ------------------------------------------------------------
+    - id: "device-1"
 
       source:
         endpoint: "127.0.0.1:502"
         unit_id: 1
         timeout_ms: 2000
 
+        device_name: "INVERTER_A01"
+        status_slot: 0
+
       reads:
         - fc: 1
           address: 0
           quantity: 128
+
         - fc: 2
           address: 0
           quantity: 128
+
         - fc: 3
           address: 0
           quantity: 125
+
         - fc: 4
           address: 0
           quantity: 125
 
       targets:
-        - id: 2
-          endpoint: "127.0.0.1:502"
+        - id: 1
+          endpoint: "127.0.0.1:1502"
           memories:
-            - offsets: {}
+            - memory_id: 0
+              offsets: {}
+
+      poll:
+        interval_ms: 1000
+
+    # ------------------------------------------------------------
+    # STATUS-DISABLED UNIT
+    # ------------------------------------------------------------
+    - id: "device-2"
+
+      source:
+        endpoint: "127.0.0.1:503"
+        unit_id: 2
+        timeout_ms: 2000
+
+        device_name: "METER_B07"
+        # status_slot intentionally omitted (opt-out)
+
+      reads:
+        - fc: 3
+          address: 0
+          quantity: 64
+
+      targets:
+        - id: 2
+          endpoint: "127.0.0.1:1502"
+          memories:
+            - memory_id: 0
+              offsets: {}
 
       poll:
         interval_ms: 1000

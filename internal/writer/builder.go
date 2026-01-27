@@ -16,7 +16,26 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 		return Plan{}, errors.New("writer: unit.id required")
 	}
 
-	plan := Plan{UnitID: u.ID}
+	plan := Plan{
+		UnitID: u.ID,
+	}
+
+	// ------------------------------------------------------------
+	// STATUS PLAN (OPT-IN)
+	// ------------------------------------------------------------
+
+	if u.Source.StatusSlot != nil {
+		plan.Status = &StatusPlan{
+			Endpoint:   "", // resolved via Status_Memory at higher level
+			UnitID:     u.Source.UnitID,
+			BaseSlot:   *u.Source.StatusSlot,
+			DeviceName: u.Source.DeviceName,
+		}
+	}
+
+	// ------------------------------------------------------------
+	// DATA TARGETS
+	// ------------------------------------------------------------
 
 	for _, t := range u.Targets {
 		ep := TargetEndpoint{
@@ -62,13 +81,7 @@ func BuildEndpointClients(
 			return nil, nil, err
 		}
 
-		// IMPORTANT:
-		// *ingest.EndpointClient now implements:
-		//   WriteBits(...)
-		//   WriteRegisters(...)
-		// which exactly matches writer.endpointClient.
 		clients[endpoint] = c
-
 		closers = append(closers, c.Close)
 	}
 

@@ -5,14 +5,68 @@ import (
 	"fmt"
 )
 
-// Validate checks for destination memory overlaps across all units.
-// It enforces geometry safety only.
+// Validate checks configuration correctness.
+// It performs declarative validation only.
+// It MUST NOT mutate configuration.
 func Validate(cfg *Config) error {
 	type span struct {
 		start uint16
 		end   uint16
 		unit  string
 	}
+
+	// ------------------------------------------------------------
+	// DEVICE STATUS BLOCK VALIDATION (OPT-IN)
+	// ------------------------------------------------------------
+
+	statusUsed := false
+	slotOwner := make(map[uint16]string)
+
+	for _, u := range cfg.Replicator.Units {
+		// device_name sanity (ASCII only)
+		if u.Source.DeviceName != "" {
+			for i := 0; i < len(u.Source.DeviceName); i++ {
+				if u.Source.DeviceName[i] > 0x7F {
+					return fmt.Errorf(
+						"unit %q: device_name must contain ASCII characters only",
+						u.ID,
+					)
+				}
+			}
+		}
+
+		// status is opt-in; only validate if status_slot is provided
+		if u.Source.StatusSlot == nil {
+			continue
+		}
+
+		statusUsed = true
+		slot := *u.Source.StatusSlot
+
+		// status_slot uniqueness
+		if prev, exists := slotOwner[slot]; exists {
+			return fmt.Errorf(
+				"status_slot collision: slot=%d used by units %q and %q",
+				slot,
+				prev,
+				u.ID,
+			)
+		}
+		slotOwner[slot] = u.ID
+	}
+
+	// Status_Memory is required only if status is used
+	if statusUsed {
+		if cfg.Replicator.StatusMemory == nil || cfg.Replicator.StatusMemory.Endpoint == "" {
+			return fmt.Errorf(
+				"Status_Memory.endpoint must be defined when any unit uses status_slot",
+			)
+		}
+	}
+
+	// ------------------------------------------------------------
+	// DESTINATION MEMORY GEOMETRY VALIDATION
+	// ------------------------------------------------------------
 
 	// key = endpoint | memory_id | fc
 	spans := make(map[string][]span)
