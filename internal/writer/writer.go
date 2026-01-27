@@ -32,7 +32,7 @@ func (w *writerImpl) Write(res poller.PollResult) error {
 	var errs []string
 
 	// ------------------------------------------------------------
-	// DATA WRITES ONLY
+	// DATA WRITES ONLY — DELIVERY, NO INTERPRETATION
 	// ------------------------------------------------------------
 
 	if res.Err == nil {
@@ -76,11 +76,6 @@ func (w *writerImpl) Write(res poller.PollResult) error {
 								tgt.Endpoint, unitID, b.FC, dstAddr, err,
 							))
 						}
-					default:
-						errs = append(errs, fmt.Sprintf(
-							"writer: unsupported fc %d",
-							b.FC,
-						))
 					}
 				}
 			}
