@@ -1,0 +1,198 @@
+# Device Status Block Layout
+
+This document defines the **physical memory layout** of the device status block written by Modbus Replicator.
+
+It builds directly on `STATUS_SEMANTICS.md`.
+If a field is not listed here, it does not exist.
+
+---
+
+## Core Principles
+
+* Status is **data**, stored in Modbus memory
+* Layout is **fixed and deterministic**
+* One device = one **device slot**
+* Slots are addressed by index, not meaning
+* No dynamic resizing
+
+The layout must be simple enough to be read by:
+
+* SCADA systems
+* PLCs
+* Scripts
+* Humans at 3 AM
+
+---
+
+## Device Slot
+
+A **device slot** is a contiguous block of holding registers reserved for one device’s status.
+
+* Slots are indexed: `0, 1, 2, ...`
+* Slot index is configured via `status_slot`
+* Slot size is fixed
+
+> Slots are *not* registers. Slots are logical groupings.
+
+---
+
+## Slot Size
+
+Each device slot occupies:
+
+* **20 holding registers** (16‑bit each)
+* Total: **320 bits** per device
+
+This provides:
+
+* space for core status
+* room for identity
+* future expansion without breaking compatibility
+
+---
+
+## Register Layout (Per Slot)
+
+Offsets below are **relative to the slot base address**.
+
+| Offset | Size | Name             | Description                              |
+| -----: | ---: | ---------------- | ---------------------------------------- |
+|      0 |    1 | Health Code      | `0 = OK`, `1 = ERROR`                    |
+|      1 |    1 | Error Code       | Raw Modbus / transport error code        |
+|      2 |    1 | Seconds in Error | Saturating counter (future runner/state) |
+|      3 |    1 | Reserved         | Reserved (set to 0)                      |
+|   4–19 |   16 | Device Name      | ASCII, packed, fixed length              |
+
+---
+
+## Field Details
+
+### Health Code (Offset 0)
+
+* Width: 16‑bit unsigned
+* Values:
+
+  * `0` → OK
+  * `1` → ERROR
+
+Written every poll cycle.
+
+---
+
+### Error Code (Offset 1)
+
+* Width: 16‑bit unsigned
+* Meaning:
+
+  * `0` → no error
+  * non‑zero → error occurred
+
+The value is passed through **unchanged** from the poller context.
+
+No parsing is performed.
+
+---
+
+### Seconds in Error (Offset 2)
+
+* Width: 16‑bit unsigned
+* Behavior:
+
+  * increments once per second while in ERROR
+  * resets to `0` on transition to OK
+  * **saturates** at max value (`65535`)
+
+This field is **not written by the writer yet**.
+It is owned by the future runner/state layer.
+
+---
+
+### Reserved (Offset 3)
+
+* Width: 16‑bit
+* Always written as `0`
+
+Reserved for future use.
+
+---
+
+### Device Name (Offsets 4–19)
+
+* 16 registers = **32 ASCII characters**
+* Encoding: 1 character per byte, big‑endian packing
+* Fixed length
+* Null‑padded
+
+Rules:
+
+* ASCII only
+* Truncated if longer than 32 characters
+* Written every successful status write
+
+This allows:
+
+* human identification
+* SCADA display
+* recovery after MMA restart
+
+---
+
+## Base Address Calculation
+
+```
+base_address = status_memory_base + (status_slot × 20)
+```
+
+All offsets are relative to `base_address`.
+
+---
+
+## Write Rules (Writer Layer)
+
+For each poll cycle:
+
+* Health Code → always written
+* Error Code → always written
+* Reserved → written as `0`
+* Device Name → written when status is enabled
+
+No partial updates.
+
+A single failed write invalidates the entire status update.
+
+---
+
+## What This Layout Does NOT Encode
+
+Explicitly excluded:
+
+* Quality flags
+* Error history
+* Retry counts
+* Vendor‑specific meaning
+* Timestamps
+
+Those belong to higher layers.
+
+---
+
+## Compatibility Guarantee
+
+Once released:
+
+* Slot size will not change
+* Offsets will not move
+* Existing fields will not change meaning
+
+Only **unused reserved space** may be consumed in future versions.
+
+---
+
+## Summary
+
+* One device → one slot
+* Slot = 20 registers
+* First registers = truth
+* Remaining registers = identity + future
+
+Simple. Deterministic. Honest.

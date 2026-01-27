@@ -1,0 +1,210 @@
+# Runner / State Specification
+
+This document defines the **runner/state layer** of Modbus Replicator.
+
+It specifies **behavior only**.
+No code.
+No data structures.
+No optimizations.
+
+If it is not written here, it does not exist.
+
+---
+
+## Purpose
+
+The runner/state layer exists to add **time awareness** to device status.
+
+It consumes poll outcomes and derives **seconds-in-error** without changing the meaning of status itself.
+
+The runner never reads devices.
+The runner never writes business data.
+The runner never interprets delivery failures.
+
+---
+
+## Core Rule (LOCKED)
+
+> **Seconds-in-error is driven by Modbus read outcome, not MMA write outcome.**
+
+* Poll success resets the counter
+* Poll failure increments the counter
+* Writer success or failure is ignored
+
+This rule is non-negotiable.
+
+---
+
+## Inputs
+
+The runner consumes:
+
+* `PollResult.Err`
+* Poll timestamp
+
+It does **not** consume:
+
+* Writer errors
+* MMA connectivity
+* Client reads
+
+---
+
+## Outputs
+
+The runner produces:
+
+* Seconds-in-error value
+
+It writes this value into the **status block**:
+
+* Offset: **2** (per STATUS_BLOCK_LAYOUT)
+* Width: **uint16**
+
+---
+
+## State Model
+
+For each device slot, the runner maintains:
+
+* current seconds-in-error
+* last known poll outcome
+
+This state is local and ephemeral.
+
+---
+
+## State Transitions
+
+### On Poll Success
+
+Condition:
+
+* `PollResult.Err == nil`
+
+Actions:
+
+* Set seconds-in-error to `0`
+* Update last known outcome to SUCCESS
+
+---
+
+### On Poll Failure
+
+Condition:
+
+* `PollResult.Err != nil`
+
+Actions:
+
+* Increment seconds-in-error by elapsed seconds
+* Saturate at maximum value (`65535`)
+* Update last known outcome to FAILURE
+
+---
+
+## Time Accounting
+
+* Seconds are counted using wall-clock time between poll cycles
+* Partial seconds are rounded down
+* Multiple failures within the same second count once
+
+No high-resolution timing is required.
+
+---
+
+## Saturation Behavior
+
+* Counter is **monotonic increasing** while in failure
+* Once `65535` is reached, it remains fixed
+* No wrap-around is allowed
+
+Saturation indicates prolonged failure, not overflow.
+
+---
+
+## Reset Behavior
+
+* A single successful poll immediately resets seconds-in-error to `0`
+* No hysteresis
+* No grace period
+
+Truth overrides history.
+
+---
+
+## MMA Restart Behavior
+
+If MMA restarts:
+
+* Memory may be cleared
+* Runner state remains authoritative
+* Next runner write restores correct seconds-in-error
+
+If runner restarts:
+
+* State resets to unknown
+* First poll outcome re-initializes the counter
+
+---
+
+## Writer Interaction
+
+The runner:
+
+* Writes only the seconds-in-error field
+* Does not modify health code
+* Does not modify error code
+* Does not write device name
+
+Those remain writer-owned.
+
+---
+
+## Failure Isolation
+
+Runner logic must not:
+
+* fail a poll
+* block a writer
+* propagate errors upward
+
+Runner failures are local and recoverable.
+
+---
+
+## Explicit Non-Goals
+
+The runner does NOT:
+
+* store history
+* count total failures
+* emit metrics
+* classify errors
+* debounce transitions
+
+Those belong to analytics layers.
+
+---
+
+## Determinism Guarantee
+
+Given the same sequence of poll outcomes and timestamps:
+
+* the same seconds-in-error values must be produced
+
+No randomness is permitted.
+
+---
+
+## Summary
+
+The runner/state layer:
+
+* adds time, not meaning
+* accumulates duration, not interpretation
+* respects device truth absolutely
+
+It is simple by design.
+
+That simplicity is what makes the system trustworthy.

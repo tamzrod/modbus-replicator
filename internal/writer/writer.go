@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"modbus-replicator/internal/poller"
-	"modbus-replicator/internal/status"
 )
 
 // endpointClient is the exact contract the writer uses.
@@ -33,7 +32,7 @@ func (w *writerImpl) Write(res poller.PollResult) error {
 	var errs []string
 
 	// ------------------------------------------------------------
-	// DATA WRITES (unchanged behavior)
+	// DATA WRITES ONLY
 	// ------------------------------------------------------------
 
 	if res.Err == nil {
@@ -84,48 +83,6 @@ func (w *writerImpl) Write(res poller.PollResult) error {
 						))
 					}
 				}
-			}
-		}
-	}
-
-	// ------------------------------------------------------------
-	// STATUS WRITES (data, different address)
-	// ------------------------------------------------------------
-
-	if w.plan.Status != nil {
-		sp := w.plan.Status
-		cli := w.clients[sp.Endpoint]
-		if cli == nil {
-			errs = append(errs, fmt.Sprintf(
-				"writer: missing status client for endpoint %s",
-				sp.Endpoint,
-			))
-		} else {
-			var health uint16
-			var errCode uint16
-
-			if res.Err == nil {
-				health = status.HealthOK
-				errCode = 0
-			} else {
-				health = status.HealthError
-				errCode = 1
-			}
-
-			regs := make([]uint16, status.SlotsPerDevice)
-			regs[status.SlotHealthCode] = health
-			regs[status.SlotLastErrorCode] = errCode
-
-			if err := cli.WriteRegisters(
-				3,
-				sp.UnitID,
-				sp.BaseSlot,
-				regs,
-			); err != nil {
-				errs = append(errs, fmt.Sprintf(
-					"writer: status write failed ep=%s unit=%d slot=%d err=%v",
-					sp.Endpoint, sp.UnitID, sp.BaseSlot, err,
-				))
 			}
 		}
 	}

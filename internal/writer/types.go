@@ -20,7 +20,7 @@ type TargetEndpoint struct {
 // If nil, status writing is disabled for this unit.
 type StatusPlan struct {
 	Endpoint   string
-	UnitID     uint8
+	UnitID     uint16
 	BaseSlot   uint16
 	DeviceName string
 }

@@ -20,8 +20,17 @@ const SlotLastErrorCode = 1
 // SlotSecondsInError holds the duration (in seconds) the device has been in error.
 const SlotSecondsInError = 2
 
+// ---- RESERVED RANGE ----
+
+// Slots 3–10 are reserved for future use.
+const SlotReservedStart = 3
+const SlotReservedEnd   = 10
+
+// ---- DEVICE NAME ----
+
 // SlotDeviceNameStart is the first slot used for the device name.
-const SlotDeviceNameStart = 3
+// Device name is always placed at the END of the status block.
+const SlotDeviceNameStart = 11
 
 // SlotDeviceNameSlots is the number of slots reserved for the device name.
 const SlotDeviceNameSlots = 8

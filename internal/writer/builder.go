@@ -27,7 +27,7 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 	if u.Source.StatusSlot != nil {
 		plan.Status = &StatusPlan{
 			Endpoint:   "", // resolved via Status_Memory at higher level
-			UnitID:     u.Source.UnitID,
+			UnitID:     uint16(u.Source.UnitID), // explicit widening
 			BaseSlot:   *u.Source.StatusSlot,
 			DeviceName: u.Source.DeviceName,
 		}

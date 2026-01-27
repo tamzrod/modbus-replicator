@@ -1,0 +1,182 @@
+# DEVICE_NAME — Identity Semantics
+
+This document defines the **identity semantics** of `DEVICE_NAME` within the Modbus Replicator + MMA system.
+
+This is a **behavioral specification**.
+No code.
+No implementation detail.
+If a behavior is not stated here, it does not exist.
+
+---
+
+## Purpose
+
+`DEVICE_NAME` represents **device identity**, not device state.
+
+It exists to:
+
+* give humans a stable identifier
+* allow downstream systems to label data correctly
+* re‑establish identity after trust boundaries are crossed
+
+It does **not** exist to:
+
+* indicate liveness
+* indicate health
+* act as telemetry
+* act as a heartbeat
+
+Identity is static by nature. Treating it as dynamic is an error.
+
+---
+
+## Identity vs Telemetry (Core Principle)
+
+> **Identity is orthogonal to state.**
+
+* State may change frequently
+* Identity must not
+
+`DEVICE_NAME` must therefore follow **different write rules** than status or data fields.
+
+---
+
+## Write Rules (LOCKED)
+
+`DEVICE_NAME` is written **only** under the following conditions:
+
+1. **Replicator startup**
+2. **Replicator reconnect to MMA**
+3. **MMA memory reset or trust loss**
+
+It is **never written**:
+
+* during normal polling
+* during status updates
+* on every cycle
+* as part of routine writes
+
+If none of the write conditions are met, **silence is correct behavior**.
+
+---
+
+## Placement Rule (LOCKED)
+
+`DEVICE_NAME` is always located at the **end of the status block**.
+
+This placement is intentional and mandatory.
+
+Reasons:
+
+* allows partial status writes
+* allows writers to stop early
+* minimizes packet size
+* preserves RBE behavior
+
+Early fields may be written without touching identity.
+
+---
+
+## Silence Semantics
+
+Silence regarding `DEVICE_NAME` means:
+
+> **Identity is unchanged and trusted.**
+
+Silence does **not** mean:
+
+* identity missing
+* identity unknown
+* identity invalid
+
+Silence is meaningful only because trust rules are explicit.
+
+---
+
+## Trust Boundaries
+
+A trust boundary is crossed when:
+
+* MMA restarts
+* MMA memory is cleared
+* the replicator reconnects after loss of connectivity
+
+Crossing a trust boundary invalidates any assumption about identity persistence.
+
+In these cases, `DEVICE_NAME` **must be re‑asserted**.
+
+---
+
+## Restart Scenarios
+
+### MMA Restart
+
+* MMA memory may be empty or invalid
+* Replicator must re‑write `DEVICE_NAME`
+* Identity becomes authoritative again
+
+### Replicator Restart
+
+* Identity is known locally
+* Identity is written once after reconnect
+* Normal silence resumes
+
+### Network Interruption
+
+* Identity is re‑written only if MMA trust is lost
+* Temporary transport failures do not trigger identity writes
+
+---
+
+## Size and Constraints
+
+* `DEVICE_NAME` has a fixed maximum length
+* Excess characters are truncated
+* Encoding is ASCII only
+
+Exact limits are defined in `STATUS_BLOCK_LAYOUT.md`.
+
+---
+
+## What DEVICE_NAME Is NOT
+
+`DEVICE_NAME` is **not**:
+
+* telemetry
+* metadata
+* configuration
+* heartbeat
+* versioning
+* ownership
+
+It is **identity only**.
+
+---
+
+## Design Rationale
+
+Writing identity repeatedly:
+
+* wastes bandwidth
+* breaks RBE semantics
+* increases packet size
+* creates false change signals
+
+Placing identity at the end of the block allows:
+
+> **The fastest update — no update.**
+
+Identity is written rarely so that everything else can be written efficiently.
+
+---
+
+## Summary
+
+* Identity is static
+* Silence is correct
+* Re‑assert only on trust loss
+* Never mix identity with telemetry
+
+`DEVICE_NAME` exists to make the system **human‑readable without making it noisy**.
+
+That balance is intentional and must not be broken.
