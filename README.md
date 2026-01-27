@@ -1,251 +1,200 @@
 # Modbus Replicator
 
-A deterministic Modbus TCP **read → replicate → write** engine designed to safely mirror data from one or more Modbus sources into one or more Modbus memory targets (e.g. MMA), with **geometry-only configuration**, strict validation, and test-backed correctness.
+A **deterministic Modbus read → fan‑out → write engine** designed to isolate unstable field devices from consumers by writing into a memory‑centric buffer (MMA – Modbus Memory Appliance).
+
+This project is intentionally boring.
+
+That is its strength.
+
+---
+
+## What This Is
+
+Modbus Replicator:
+
+* Reads Modbus devices (TCP today, RTU planned)
+* Produces clean, bounded snapshots
+* Writes results into Modbus Memory (MMA)
+* Fans out to **one or many consumers** without multiplying device load
+
+It does **not**:
+
+* parse semantics
+* scale values
+* retry reads behind your back
+* probe devices independently
+* hide failures with metadata
+
+---
+
+## Why It Exists
+
+Traditional SCADA stacks suffer from a common failure pattern:
+
+> When devices become unstable, **clients crash first**.
+
+This happens because:
+
+* every client talks directly to devices
+* timeouts cascade
+* quality flags lie
+* retry storms amplify failure
+
+Modbus Replicator breaks this pattern by inserting a **memory contract**:
+
+```
+Devices → Replicator → Modbus Memory → Clients
+```
+
+Devices are touched once.
+Clients read safely.
 
 ---
 
 ## Core Principles
 
-* **Dumb core, smart edges**
+* **The device is the truth**
+* **Memory is the contract**
+* **Status is data**
+* **Poll failures are not write failures**
+* **Every error has exactly one owner**
 
-  * No scaling, parsing, or semantics
-  * Raw Modbus values only
-* **Deterministic geometry**
-
-  * Explicit addresses, quantities, offsets
-  * No implicit behavior
-* **Fail fast**
-
-  * Invalid config fails at startup
-  * Overlapping memory ranges are rejected
-* **Test-backed**
-
-  * Poller, writer, and validation are covered by unit tests
+Nothing is guessed.
+Nothing is hidden.
 
 ---
 
-## Architecture Overview
+## Architecture (At a Glance)
 
 ```
-        ┌──────────────┐
-        │  Modbus TCP  │   (real device or MMA)
-        │   Source(s)  │
-        └──────┬───────┘
-               │  FC read (1/2/3/4)
-               ▼
-        ┌──────────────┐
-        │    Poller    │
-        │ (per unit)   │
-        └──────┬───────┘
-               │  all-or-nothing snapshot
-               ▼
-        ┌──────────────┐
-        │    Writer    │
-        │ (per unit)   │
-        └──────┬───────┘
-               │  FC write w/ offsets
-               ▼
-        ┌──────────────┐
-        │  Modbus TCP  │   (typically MMA)
-        │   Target(s)  │
-        └──────────────┘
+[ Modbus Devices ]
+        ↓
+      Poller
+        ↓
+   PollResult (snapshot)
+        ↓
+      Writer
+        ↓
+[ Modbus Memory (MMA) ]
+        ↓
+   SCADA / Clients
 ```
 
-### Key Properties
+* **Poller** reads devices
+* **Writer** delivers data
+* **MMA** serves as deterministic RAM
 
-* One **poller goroutine per unit**
-* One **writer per unit**
-* Poller emits complete snapshots only
-* Writer never writes partial data
-* Targets are isolated by:
+See `docs/ARCHITECTURE.md` for full details.
 
-  * endpoint
-  * memory_id
-  * function code
-  * offset
+---
+
+## Device Status Block
+
+Device status is treated as **data**, not metadata.
+
+* Written through the same writer
+* Uses the same Raw Ingest protocol
+* Stored in a separate memory region
+
+Status is **opt‑in** via configuration:
+
+* No `status_slot` → no status writes
+* Configured slot → status written deterministically
+
+This avoids probes, heartbeats, and hidden health logic.
 
 ---
 
 ## Configuration Model
 
-### High-level Structure
+Configuration is **explicit and validated**:
 
-```yaml
-replicator:
-  units:
-    - id: "unit-1"
-      source: {...}
-      reads: [...]
-      targets: [...]
-      poll: {...}
-```
+* YAML schema
+* Deterministic address mapping
+* Overlap detection
+* Optional features must be declared
 
-Each **unit** is an independent replication pipeline.
+See:
+
+* `docs/CONFIG.md`
+* `internal/config/`
 
 ---
 
-### Source (Modbus Read)
+## Raw Ingest Protocol
 
-```yaml
-source:
-  endpoint: "127.0.0.1:503"   # host:port (NO tcp:// prefix)
-  unit_id: 1                  # Modbus Unit ID
-  timeout_ms: 1000
-```
+The writer uses a **locked, stateless protocol**:
 
----
+* One packet = one connection
+* No session state
+* No retries
+* No negotiation
 
-### Reads
-
-Defines what to read from the source.
-
-```yaml
-reads:
-  - fc: 3
-    address: 0
-    quantity: 20
-```
-
-Supported FCs:
-
-* `1` – coils
-* `2` – discrete inputs
-* `3` – holding registers
-* `4` – input registers
-
----
-
-### Targets (Modbus Write)
-
-A unit may have **multiple targets**.
-
-```yaml
-targets:
-  - id: 1
-    endpoint: "127.0.0.1:503"
-    memories:
-      - memory_id: 1
-        offsets:
-          1: 0
-          2: 0
-          3: 200
-          4: 0
-```
-
-#### Important Rules
-
-* `id` **must be numeric** (matches packet design)
-* `memory_id` maps directly to **Modbus Unit ID** on the target
-* `offsets` are **per function code**
-* Missing offset ⇒ default `0`
-
----
-
-### Poll
-
-```yaml
-poll:
-  interval_ms: 1000
-```
-
----
-
-## Stacking Multiple Sources into One Memory
-
-Multiple units may write into the **same memory_id** safely by using offsets.
-
-Example:
-
-* Unit A → holding 0–99 → memory 1 offset 0
-* Unit B → holding 0–99 → memory 1 offset 100
-
-Validation will **reject** any overlapping destination ranges.
-
----
-
-## Validation (Startup Safety)
-
-At startup, the replicator validates:
-
-* No overlapping destination ranges
-* Overlap is detected **only if all match**:
-
-  * endpoint
-  * memory_id
-  * function code
-  * overlapping address ranges
-
-Touching ranges (e.g. `0–9` and `10–19`) are allowed.
-
-If validation fails → **process exits immediately**.
-
----
-
-## How to Run
-
-### 1. Start MMA (example)
-
-```text
-Modbus TCP :503
-Raw Ingest :9000
-REST       :8080
-```
-
-Ensure the memory you target is enabled in MMA.
-
----
-
-### 2. Run Replicator
-
-```powershell
-go run ./cmd/replicator ./config.yaml
-```
-
----
-
-### 3. Verify
-
-Using modpoll:
-
-```bash
-modpoll -m tcp -p 503 -t 4 -r 1   -c 10 127.0.0.1   # source
-modpoll -m tcp -p 503 -t 4 -r 201 -c 10 127.0.0.1   # destination
-```
-
-Values should match according to configured offsets.
+This keeps failure modes obvious and debuggable.
 
 ---
 
 ## What This Is NOT
 
-* ❌ Not a PLC
-* ❌ Not a SCADA
-* ❌ No scaling or data typing
-* ❌ No retries or buffering
-* ❌ No semantics
+This is **not**:
 
-Those belong **outside** this system.
+* a SCADA
+* a historian
+* a parser
+* a rules engine
+* a retry framework
 
----
-
-## Project Status
-
-* Config model: **LOCKED**
-* Validation: **LOCKED**
-* Poller: **LOCKED**
-* Writer: **LOCKED**
-* Main wiring: **LOCKED**
-* Runtime tests: **PASSED (real MMA loopback)**
+Those belong *above* or *beside* this layer.
 
 ---
 
-## Next Extensions (Optional)
+## Current State
 
-* `--validate-only` mode
-* Structured logging
-* Metrics export
-* Release tagging
+Implemented:
+
+* Modbus TCP polling
+* Deterministic writer
+* Device status block wiring
+* Config validation & normalization
+* Clean test coverage
+
+Planned:
+
+* Runner/state (seconds‑in‑error)
+* Modbus RTU support
+* Extended status semantics
 
 ---
 
-**If semantics appear, the configuration model is wrong.**
+## Who This Is For
+
+* OT / SCADA engineers
+* Energy systems
+* Industrial automation
+* Anyone tired of cascading Modbus failures
+
+If you believe:
+
+> *"A system should fail honestly."*
+
+You’re in the right place.
+
+---
+
+## License
+
+Open source. Practical. Unromantic.
+
+Use it, study it, improve it.
+
+---
+
+## Final Note
+
+This project optimizes for:
+
+* clarity over cleverness
+* determinism over convenience
+* truth over green dashboards
+
+If that resonates with you — welcome.
