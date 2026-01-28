@@ -1,7 +1,7 @@
 // internal/writer/types.go
 package writer
 
-import "modbus-replicator/internal/poller"
+import "github.com/tamzrod/modbus-replicator/internal/poller"
 
 // MemoryDest is one write destination inside an endpoint.
 // Offsets are per-FC address deltas; missing FC => 0.

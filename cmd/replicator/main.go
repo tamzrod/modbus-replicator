@@ -7,9 +7,9 @@ import (
 	"os"
 	"time"
 
-	"modbus-replicator/internal/config"
-	"modbus-replicator/internal/poller"
-	"modbus-replicator/internal/writer"
+	"github.com/tamzrod/modbus-replicator/internal/config"
+	"github.com/tamzrod/modbus-replicator/internal/poller"
+	"github.com/tamzrod/modbus-replicator/internal/writer"
 )
 
 func main() {

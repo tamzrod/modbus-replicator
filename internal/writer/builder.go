@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	cfg "modbus-replicator/internal/config"
-	ingest "modbus-replicator/internal/writer/ingest"
+	cfg "github.com/tamzrod/modbus-replicator/internal/config"
+	ingest "github.com/tamzrod/modbus-replicator/internal/writer/ingest"
 )
 
 // BuildPlan converts one unit config into a Writer Plan.

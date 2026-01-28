@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"modbus-replicator/internal/poller"
+	"github.com/tamzrod/modbus-replicator/internal/poller"
 )
 
 // endpointClient is the exact contract the writer uses.

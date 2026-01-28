@@ -4,8 +4,8 @@ package poller
 import (
 	"time"
 
-	cfg "modbus-replicator/internal/config"
-	pmodbus "modbus-replicator/internal/poller/modbus"
+	cfg "github.com/tamzrod/modbus-replicator/internal/config"
+	pmodbus "github.com/tamzrod/modbus-replicator/internal/poller/modbus"
 )
 
 // Build constructs a Poller and its Modbus client from config.
