@@ -22,12 +22,10 @@ func (p *Poller) Run(ctx context.Context, out chan<- PollResult) {
 		case <-ticker.C:
 			res := p.PollOnce()
 
-			log.Printf(
-				"poller: tick unit=%s blocks=%d err=%v",
-				p.cfg.UnitID,
-				len(res.Blocks),
-				res.Err,
-			)
+			// NOTE:
+			// Per-tick success logging intentionally removed.
+			// Errors are surfaced via status memory and downstream handling.
+			// Silence on success prevents log flooding at scale.
 
 			out <- res
 		}

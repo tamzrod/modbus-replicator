@@ -13,6 +13,25 @@ import (
 	"github.com/tamzrod/modbus/transport/tcp"
 )
 
+// ModbusException preserves the raw Modbus exception code.
+// This is protocol truth, not interpretation.
+type ModbusException struct {
+	Function  uint8 // original function code (without 0x80)
+	Exception uint8 // exception code (01–0B)
+}
+
+// Code exposes the raw exception code as uint16 for upstream status wiring.
+// This is not interpretation; it is direct access to the on-wire value.
+func (e ModbusException) Code() uint16 {
+	return uint16(e.Exception)
+}
+
+func (e ModbusException) Error() string {
+	// String exists only to satisfy error interface.
+	// Must NOT be used as a source of truth.
+	return fmt.Sprintf("modbus exception: fc=%d code=%d", e.Function, e.Exception)
+}
+
 // Client implements poller.Client using Modbus TCP.
 // This adapter is geometry-only: it builds requests and unpacks raw responses.
 type Client struct {
@@ -105,20 +124,13 @@ func (c *Client) nextTID() uint16 {
 	return c.tid
 }
 
-// buildReadRequest builds a Modbus TCP ADU for read functions 1/2/3/4.
-//
-// MBAP:
-//   TID(2) PID(2=0) LEN(2) UID(1)
-// PDU:
-//   FC(1) Address(2) Quantity(2)
 func (c *Client) buildReadRequest(fc uint8, addr, qty uint16) ([]byte, uint16) {
 	tid := c.nextTID()
 
-	// Length = UnitID(1) + PDU(1+2+2) = 6
 	const protoID uint16 = 0
-	const length uint16 = 6
+	const length uint16 = 6 // UnitID(1) + PDU(5)
 
-	adu := make([]byte, 7+5) // MBAP(7) + PDU(5)
+	adu := make([]byte, 7+5)
 	binary.BigEndian.PutUint16(adu[0:2], tid)
 	binary.BigEndian.PutUint16(adu[2:4], protoID)
 	binary.BigEndian.PutUint16(adu[4:6], length)
@@ -148,7 +160,6 @@ func (c *Client) roundTripRead(fc uint8, addr, qty uint16) ([]byte, error) {
 		return nil, err
 	}
 
-	// Best-effort sanity checks (still geometry-only).
 	if resp.TransactionID != tid {
 		return nil, fmt.Errorf("modbus tcp: transaction id mismatch: got=%d want=%d", resp.TransactionID, tid)
 	}
@@ -158,9 +169,15 @@ func (c *Client) roundTripRead(fc uint8, addr, qty uint16) ([]byte, error) {
 	if resp.UnitID != c.unitID {
 		return nil, fmt.Errorf("modbus tcp: unit id mismatch: got=%d want=%d", resp.UnitID, c.unitID)
 	}
+
+	// ---- TRUTH PRESERVED HERE ----
 	if resp.Exception != nil {
-		return nil, fmt.Errorf("modbus exception: fc=%d code=%d", resp.Function, uint8(*resp.Exception))
+		return nil, ModbusException{
+			Function:  resp.Function,
+			Exception: uint8(*resp.Exception),
+		}
 	}
+
 	if resp.Function != fc {
 		return nil, fmt.Errorf("modbus: function mismatch: got=%d want=%d", resp.Function, fc)
 	}
@@ -179,7 +196,6 @@ func (c *Client) doReadBits(fc uint8, addr, qty uint16) ([]byte, error) {
 	if len(p) < 1 {
 		return nil, errors.New("modbus: short read-bits payload")
 	}
-	// payload[0] = byte count, remaining = packed bits
 	byteCount := int(p[0])
 	if len(p)-1 < byteCount {
 		return nil, errors.New("modbus: read-bits payload shorter than byte count")
@@ -198,7 +214,6 @@ func (c *Client) doReadRegisters(fc uint8, addr, qty uint16) ([]byte, error) {
 	if len(p) < 1 {
 		return nil, errors.New("modbus: short read-registers payload")
 	}
-	// payload[0] = byte count, remaining = registers big-endian
 	byteCount := int(p[0])
 	if byteCount%2 != 0 {
 		return nil, errors.New("modbus: read-registers byte count not even")
