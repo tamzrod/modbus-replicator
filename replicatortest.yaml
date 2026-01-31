@@ -1,0 +1,66 @@
+# ============================================================
+# Modbus Replicator – Real End-to-End Test Configuration
+#
+# MMA Topology (already running):
+#   127.0.0.1:502, Unit 1 → Source Pretender
+#   127.0.0.1:502, Unit 2 → Replicator Target Memory
+#   127.0.0.1:502, Unit 3 → Status Memory
+#
+# Status Layout:
+#   status_slot = 0
+#   → Status block occupies slots 0–19 in Unit 3
+# ============================================================
+
+replicator:
+  # ------------------------------------------------------------
+  # Status memory endpoint (UNIT ID comes from status_slot)
+  # ------------------------------------------------------------
+  Status_Memory:
+    endpoint: "127.0.0.1:502"
+
+  units:
+    - id: "unit-1"
+
+      # --------------------------------------------------------
+      # SOURCE (Pretender)
+      # --------------------------------------------------------
+      source:
+        endpoint: "127.0.0.1:502"
+        unit_id: 1                  # SOURCE PRETENDER
+        device_name: "INV-TEST-01"
+        status_slot: 0              # STATUS MEMORY → slots 0–19 (Unit 3)
+
+      # --------------------------------------------------------
+      # READ GEOMETRY
+      # --------------------------------------------------------
+      reads:
+        - fc: 1     # coils
+          address: 0
+          quantity: 50
+
+        - fc: 2     # discrete inputs
+          address: 0
+          quantity: 50
+
+        - fc: 3     # holding registers
+          address: 0
+          quantity: 50
+
+        - fc: 4     # input registers
+          address: 0
+          quantity: 50
+
+      # --------------------------------------------------------
+      # TARGET (Replicator Memory)
+      # --------------------------------------------------------
+      targets:
+        - id: 2                    # REPLICATOR TARGET MEMORY
+          endpoint: "127.0.0.1:502"
+          memories:
+            - offsets: {}          # 1:1 address mapping
+
+      # --------------------------------------------------------
+      # POLLING
+      # --------------------------------------------------------
+      poll:
+        interval_ms: 1000

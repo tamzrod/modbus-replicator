@@ -6,7 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"modbus-replicator/internal/poller"
+	"github.com/tamzrod/modbus-replicator/internal/poller"
+
 )
 
 // ------------------------------------------------------------------

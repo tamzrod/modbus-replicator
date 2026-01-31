@@ -23,11 +23,11 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 	// ------------------------------------------------------------
 	// STATUS PLAN (OPT-IN)
 	// ------------------------------------------------------------
-
 	if u.Source.StatusSlot != nil {
 		plan.Status = &StatusPlan{
-			Endpoint:   "", // resolved via Status_Memory at higher level
-			UnitID:     uint16(u.Source.UnitID), // explicit widening
+			// Endpoint is resolved via Status_Memory at higher level
+			Endpoint:   "",
+			UnitID:     uint16(u.Source.UnitID),
 			BaseSlot:   *u.Source.StatusSlot,
 			DeviceName: u.Source.DeviceName,
 		}
@@ -36,7 +36,6 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 	// ------------------------------------------------------------
 	// DATA TARGETS
 	// ------------------------------------------------------------
-
 	for _, t := range u.Targets {
 		ep := TargetEndpoint{
 			TargetID: uint32(t.ID),
@@ -59,11 +58,23 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 // as writer.endpointClient interfaces.
 func BuildEndpointClients(
 	u cfg.UnitConfig,
+	statusEndpoint string, // <<< ADD THIS
 ) (map[string]endpointClient, func() error, error) {
 
 	unique := map[string]struct{}{}
+
+	// ------------------------------------------------------------
+	// TARGET ENDPOINTS
+	// ------------------------------------------------------------
 	for _, t := range u.Targets {
 		unique[t.Endpoint] = struct{}{}
+	}
+
+	// ------------------------------------------------------------
+	// STATUS ENDPOINT (if enabled)
+	// ------------------------------------------------------------
+	if u.Source.StatusSlot != nil && statusEndpoint != "" {
+		unique[statusEndpoint] = struct{}{}
 	}
 
 	clients := make(map[string]endpointClient)

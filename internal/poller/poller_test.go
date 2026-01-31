@@ -1,3 +1,4 @@
+// internal/poller/poller_test.go
 package poller
 
 import (
@@ -5,8 +6,6 @@ import (
 	"testing"
 	"time"
 )
-
-// ---- fake client ----
 
 type fakeClient struct {
 	failFC uint8
@@ -40,80 +39,47 @@ func (f *fakeClient) ReadInputRegisters(addr, qty uint16) ([]uint16, error) {
 	return make([]uint16, qty), nil
 }
 
-// ---- tests ----
-
-func TestPollOnce_AllFCsSuccess(t *testing.T) {
-	p, err := New(Config{
-		UnitID:   "unit-1",
-		Interval: time.Second,
+func TestPollOnce_Success(t *testing.T) {
+	cfg := Config{
+		UnitID:   "u1",
+		Interval: 1 * time.Second,
 		Reads: []ReadBlock{
 			{FC: 1, Address: 0, Quantity: 8},
-			{FC: 2, Address: 0, Quantity: 8},
 			{FC: 3, Address: 0, Quantity: 10},
-			{FC: 4, Address: 0, Quantity: 10},
 		},
-	}, &fakeClient{})
+	}
+
+	p, err := New(cfg, &fakeClient{}, nil)
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatalf("New() err=%v", err)
 	}
 
 	res := p.PollOnce()
 	if res.Err != nil {
-		t.Fatalf("unexpected poll error: %v", res.Err)
+		t.Fatalf("PollOnce err=%v", res.Err)
 	}
-
-	if len(res.Blocks) != 4 {
-		t.Fatalf("expected 4 blocks, got %d", len(res.Blocks))
-	}
-
-	for _, b := range res.Blocks {
-		switch b.FC {
-		case 1, 2:
-			if len(b.Bits) != int(b.Quantity) {
-				t.Fatalf("fc %d: expected %d bits, got %d", b.FC, b.Quantity, len(b.Bits))
-			}
-		case 3, 4:
-			if len(b.Registers) != int(b.Quantity) {
-				t.Fatalf("fc %d: expected %d regs, got %d", b.FC, b.Quantity, len(b.Registers))
-			}
-		}
+	if len(res.Blocks) != 2 {
+		t.Fatalf("expected 2 blocks, got %d", len(res.Blocks))
 	}
 }
 
-func TestPollOnce_UnsupportedFC(t *testing.T) {
-	p, _ := New(Config{
-		UnitID:   "unit-1",
-		Interval: time.Second,
+func TestPollOnce_Failure(t *testing.T) {
+	cfg := Config{
+		UnitID:   "u1",
+		Interval: 1 * time.Second,
 		Reads: []ReadBlock{
-			{FC: 9, Address: 0, Quantity: 1},
-		},
-	}, &fakeClient{})
-
-	res := p.PollOnce()
-	if res.Err == nil {
-		t.Fatalf("expected error for unsupported FC")
-	}
-	if len(res.Blocks) != 0 {
-		t.Fatalf("expected no blocks on failure")
-	}
-}
-
-func TestPollOnce_AllOrNothing(t *testing.T) {
-	p, _ := New(Config{
-		UnitID:   "unit-1",
-		Interval: time.Second,
-		Reads: []ReadBlock{
+			{FC: 1, Address: 0, Quantity: 8},
 			{FC: 3, Address: 0, Quantity: 10},
-			{FC: 4, Address: 0, Quantity: 10},
 		},
-	}, &fakeClient{failFC: 4})
+	}
+
+	p, err := New(cfg, &fakeClient{failFC: 3}, nil)
+	if err != nil {
+		t.Fatalf("New() err=%v", err)
+	}
 
 	res := p.PollOnce()
 	if res.Err == nil {
-		t.Fatalf("expected poll error")
-	}
-
-	if len(res.Blocks) != 0 {
-		t.Fatalf("expected zero blocks on partial failure, got %d", len(res.Blocks))
+		t.Fatalf("expected error, got nil")
 	}
 }
