@@ -11,7 +11,10 @@ import (
 
 // BuildPlan converts one unit config into a Writer Plan.
 // Assumes config has already passed validation.
-func BuildPlan(u cfg.UnitConfig) (Plan, error) {
+func BuildPlan(
+	u cfg.UnitConfig,
+	statusUnitID uint16,
+) (Plan, error) {
 	if u.ID == "" {
 		return Plan{}, errors.New("writer: unit.id required")
 	}
@@ -27,7 +30,7 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 		plan.Status = &StatusPlan{
 			// Endpoint is resolved via Status_Memory at higher level
 			Endpoint:   "",
-			UnitID:     uint16(u.Source.UnitID),
+			UnitID:     statusUnitID,
 			BaseSlot:   *u.Source.StatusSlot,
 			DeviceName: u.Source.DeviceName,
 		}
@@ -58,7 +61,7 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 // as writer.endpointClient interfaces.
 func BuildEndpointClients(
 	u cfg.UnitConfig,
-	statusEndpoint string, // <<< ADD THIS
+	statusEndpoint string,
 ) (map[string]endpointClient, func() error, error) {
 
 	unique := map[string]struct{}{}

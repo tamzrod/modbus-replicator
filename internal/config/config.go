@@ -12,6 +12,7 @@ type ReplicatorConfig struct {
 
 type StatusMemoryConfig struct {
 	Endpoint string `yaml:"endpoint"`
+	UnitID   uint8  `yaml:"unit_id"`
 }
 
 // ---- UNIT ----
@@ -27,9 +28,9 @@ type UnitConfig struct {
 // ---- SOURCE ----
 
 type SourceConfig struct {
-	Endpoint   string  `yaml:"endpoint"`
-	UnitID     uint8   `yaml:"unit_id"`
-	TimeoutMs  int     `yaml:"timeout_ms"`
+	Endpoint  string `yaml:"endpoint"`
+	UnitID    uint8  `yaml:"unit_id"`
+	TimeoutMs int    `yaml:"timeout_ms"`
 
 	// Device status block (optional)
 	StatusSlot *uint16 `yaml:"status_slot"`

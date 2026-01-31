@@ -50,9 +50,12 @@ func main() {
 		defer closePoller()
 
 		// ---- writer plan ----
-		plan, err := writer.BuildPlan(unit)
+		plan, err := writer.BuildPlan(
+			unit,
+			uint16(cfg.Replicator.StatusMemory.UnitID),
+		)
 		if plan.Status != nil {
-    	plan.Status.Endpoint = cfg.Replicator.StatusMemory.Endpoint
+			plan.Status.Endpoint = cfg.Replicator.StatusMemory.Endpoint
 		}
 
 		if err != nil {

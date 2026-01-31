@@ -17,6 +17,7 @@ replicator:
   # ------------------------------------------------------------
   Status_Memory:
     endpoint: "127.0.0.1:502"
+    unit_id: 3
 
   units:
     - id: "unit-1"
