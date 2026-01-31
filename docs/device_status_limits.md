@@ -1,6 +1,6 @@
 # Device Status — Limits & Responsibility Boundary
 
-> **Purpose**  
+> **Purpose**
 > Clarify *where limits actually live* for device status slots, and prevent artificial limits from being introduced in the Replicator.
 
 This document is **normative**.
@@ -9,7 +9,7 @@ This document is **normative**.
 
 ## Core Statement (Locked)
 
-> **There is no device-count limit in the Replicator.**  
+> **There is no device-count limit in the Replicator.**
 > **All real limits are enforced by MMA memory allocation.**
 
 If this statement is violated, the architecture is wrong.
@@ -22,23 +22,23 @@ If this statement is violated, the architecture is wrong.
 
 The Replicator:
 
-- Does **not** define a maximum number of devices
-- Does **not** enforce capacity policies
-- Does **not** warn about scale
-- Does **not** contain configuration knobs for limits
+* Does **not** define a maximum number of devices
+* Does **not** enforce capacity policies
+* Does **not** warn about scale
+* Does **not** contain configuration knobs for limits
 
 Its responsibilities are strictly:
 
-- Accept a `slot` index (0-based)
-- Compute:
+* Accept a `slot` index (0-based)
+* Compute:
 
 ```
 slot_base = slot_index × SLOT_SIZE
 ```
 
-- Write device status into Input Registers
-- Perform **bounds checking** against MMA memory
-- Fail fast if a write exceeds allocated memory
+* Write device status into **Modbus memory**
+* Perform **bounds checking** against MMA memory
+* Fail fast if a write exceeds allocated memory
 
 Nothing more.
 
@@ -48,16 +48,16 @@ Nothing more.
 
 The MMA:
 
-- Owns memory allocation
-- Defines how many Input Registers exist
-- Enforces address bounds
-- Is the **only component that limits capacity**
+* Owns memory allocation
+* Defines how many registers exist
+* Enforces address bounds
+* Is the **only component that limits capacity**
 
 If more devices are required:
 
-- Allocate more Input Registers in MMA
-- Or deploy additional MMA instances
-- Or shard by topology
+* Allocate more registers in MMA
+* Or deploy additional MMA instances
+* Or shard by topology
 
 All choices are **explicit and physical**.
 
@@ -65,17 +65,17 @@ All choices are **explicit and physical**.
 
 ## Slot Model Recap
 
-- One slot = one device
-- Slot size = **20 Input Registers**
-- Slot index is logical, not physical
+* One slot = one device
+* Slot size = **20 registers**
+* Slot index is logical, not physical
 
 Maximum device count is therefore:
 
 ```
-max_devices = floor(total_input_registers / 20)
+max_devices = floor(total_registers / 20)
 ```
 
-This is **derived**, never configured.
+This value is **derived**, never configured.
 
 ---
 
@@ -83,12 +83,12 @@ This is **derived**, never configured.
 
 The following must **never** be added to the Replicator:
 
-- Hard-coded device limits
-- Soft “recommended maximums"
-- Scaling heuristics
-- Automatic slot reassignment
-- Capacity warnings
-- Policy-based enforcement
+* Hard-coded device limits
+* Soft “recommended maximums”
+* Scaling heuristics
+* Automatic slot reassignment
+* Capacity warnings
+* Policy-based enforcement
 
 All of the above are violations of responsibility boundaries.
 
@@ -98,26 +98,25 @@ All of the above are violations of responsibility boundaries.
 
 Artificial limits:
 
-- Hide real constraints
-- Create false safety
-- Break scale silently
-- Force workarounds later
+* Hide real constraints
+* Create false safety
+* Break scale silently
+* Force workarounds later
 
 Physical limits:
 
-- Are honest
-- Are explicit
-- Are measurable
-- Are solvable by deployment
+* Are honest
+* Are explicit
+* Are measurable
+* Are solvable by deployment
 
 ---
 
 ## Final Locked Statement
 
-> **The Replicator never decides how big the system is.**  
+> **The Replicator never decides how big the system is.**
 > **It only respects the memory it is given.**
 
-If someone asks “what is the maximum number of devices?”, the correct answer is:
+If someone asks *“what is the maximum number of devices?”*, the correct answer is:
 
 > **“That depends on how much memory MMA allocates.”**
-

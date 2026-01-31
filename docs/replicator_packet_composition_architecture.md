@@ -4,7 +4,7 @@
 
 **Authoritative — REQUIRED before further replicator changes**
 
-This document defines the **replicator‑side packet composition architecture** used to generate packets consumed by **MMA2.0 raw ingest**.
+This document defines the **replicator-side packet composition architecture** used to generate packets consumed by **MMA2.0 Raw Ingest v1**.
 
 It intentionally does **not** modify, redefine, or extend MMA2.0.
 
@@ -15,26 +15,26 @@ It intentionally does **not** modify, redefine, or extend MMA2.0.
 The Modbus Replicator is responsible for:
 
 1. Acquiring raw Modbus memory from field devices
-2. Composing packets that conform to the **existing MMA2.0 raw ingest packet format**
+2. Composing packets that conform **exactly** to the existing MMA2.0 Raw Ingest v1 packet format
 3. Transmitting those packets reliably
 
 This document exists to **lock the internal replicator architecture** so that:
 
-- packet composition has a single authority
-- future packet evolution is localized
-- source data acquisition remains stable
-- silent protocol drift is prevented
+* Packet composition has a single authority
+* Future packet evolution is localized
+* Source data acquisition remains stable
+* Silent protocol drift is prevented
 
 ---
 
-## Explicit Non‑Goals
+## Explicit Non-Goals
 
 This document does **not**:
 
-- redefine the MMA2.0 packet format
-- act as the source of truth for packet bytes
-- introduce new packet fields
-- change MMA2.0 behavior
+* Redefine the MMA2.0 packet format
+* Act as the source of truth for packet bytes
+* Introduce new packet fields
+* Change MMA2.0 behavior
 
 The packet format is **already defined** and treated here as an **external contract**.
 
@@ -44,21 +44,21 @@ The packet format is **already defined** and treated here as an **external contr
 
 Packet composition is a **volatile concern**:
 
-- header layout may evolve
-- versioning may change
-- flags may be added
+* Header layout may evolve
+* Versioning may change
+* Flags may be added
 
 Source data acquisition is a **stable concern**:
 
-- Modbus polling semantics
-- register layouts
-- retry logic
+* Modbus polling semantics
+* Register layouts
+* Error ownership
 
 Mixing these concerns causes:
 
-- format drift
-- change amplification
-- silent data corruption
+* Format drift
+* Change amplification
+* Silent data corruption
 
 Therefore, packet composition **must be centralized**.
 
@@ -70,12 +70,12 @@ Therefore, packet composition **must be centralized**.
 
 No other part of the replicator may:
 
-- write header fields
-- calculate packet sizes
-- manipulate byte offsets
-- encode version, flags, or area values
+* Write header fields
+* Calculate packet sizes
+* Manipulate byte offsets
+* Encode version, flags, or area values
 
-All other components exchange **data**, never bytes.
+All other components exchange **typed data**, never raw bytes.
 
 ---
 
@@ -86,37 +86,45 @@ The replicator is divided into three responsibilities:
 ### 1) Source Acquisition (Stable)
 
 Owns:
-- Modbus polling
-- device timeouts
-- retry logic
-- raw register / bit data
+
+* Modbus polling
+* Device timeouts
+* Retry logic
+* Raw register / bit data
+* Error surfaces from Modbus
 
 Must never:
-- know packet layout
-- write protocol headers
+
+* Know packet layout
+* Write protocol headers
+* Encode byte streams
 
 ---
 
 ### 2) Packet Composition (Volatile)
 
 Owns:
-- packet header layout
-- version and flags
-- payload sizing rules
-- byte‑level encoding
 
-Is the **only place** where packet bytes are constructed.
+* Packet header layout
+* Version constants
+* Area selectors
+* Payload sizing rules
+* Byte-level encoding
+
+Is the **only place** where `[]byte` packets are constructed.
 
 ---
 
 ### 3) Transport (Generic)
 
 Owns:
-- TCP connections
-- reconnection logic
-- buffering
 
-Must treat packets as opaque `[]byte`.
+* TCP connections
+* Connection lifecycle
+* Reconnection policy
+* Timeouts
+
+Must treat packets as **opaque byte slices**.
 
 ---
 
@@ -125,39 +133,39 @@ Must treat packets as opaque `[]byte`.
 Packet composition must be isolated under a single module, for example:
 
 ```
-replicator/
- └─ packet/
-    ├─ constants.go   # magic, versions, area enums
-    ├─ header.go      # header struct and field meaning
-    ├─ sizing.go      # payload sizing rules
-    ├─ encode.go      # Marshal → []byte
+internal/
+ └─ writer/
+    └─ ingest/
+       ├─ constants.go   # magic, versions, area enums
+       ├─ header.go      # header layout and invariants
+       ├─ sizing.go      # payload sizing rules
+       ├─ encode.go      # marshal → []byte
 ```
 
 Notes:
-- Files may be split to satisfy the ≤300‑line rule
-- The **module**, not the file, is the unit of responsibility
+
+* Files may be split to satisfy the ≤300-line rule
+* The **module**, not the file, is the unit of responsibility
+* No other package may construct ingest packets
 
 ---
 
-## Packet Contract Reference
+## Packet Contract Reference (Informative)
 
-The replicator packet **must exactly match** the MMA2.0 raw ingest header:
+The replicator packet **must exactly match** the MMA2.0 Raw Ingest v1 header:
 
-| Offset | Size | Field | Type | Description |
-|------:|-----:|------|------|-------------|
-| 0 | 2 | Magic | uint16 | Packet signature |
-| 2 | 1 | Version | uint8 | Packet version |
-| 3 | 1 | Flags | uint8 | Behavior flags |
-| 4 | 1 | Area | uint8 | Modbus memory area |
-| 5 | 1 | Reserved | uint8 | Must be 0 |
-| 6 | 2 | UnitID | uint16 | Modbus Unit ID |
-| 8 | 2 | Port | uint16 | Target Modbus port |
-| 10 | 2 | Address | uint16 | 0‑based start address |
-| 12 | 2 | Count | uint16 | Number of items |
+| Offset | Size | Field   | Type   | Description           |
+| -----: | ---: | ------- | ------ | --------------------- |
+|      0 |    2 | Magic   | uint16 | Packet signature      |
+|      2 |    1 | Version | uint8  | Packet version        |
+|      3 |    1 | Area    | uint8  | Modbus memory area    |
+|      4 |    2 | UnitID  | uint16 | Modbus Unit ID        |
+|      6 |    2 | Address | uint16 | 0-based start address |
+|      8 |    2 | Count   | uint16 | Number of items       |
 
-Header size: **14 bytes**
+Header size: **10 bytes**
 
-This table is a **reference only**. Code remains authoritative.
+This table is **reference only**. Code remains authoritative.
 
 ---
 
@@ -165,9 +173,9 @@ This table is a **reference only**. Code remains authoritative.
 
 If the packet format changes in the future:
 
-- only the packet module may be modified
-- source acquisition code must remain untouched
-- transport code must remain untouched
+* Only the packet composition module may be modified
+* Source acquisition code must remain untouched
+* Transport code must remain untouched
 
 This guarantees safe evolution without regression.
 
@@ -177,10 +185,10 @@ This guarantees safe evolution without regression.
 
 This architecture prevents:
 
-- duplicated packet logic
-- partial format updates
-- silent corruption
-- cross‑module coupling
+* Duplicated packet logic
+* Partial format updates
+* Silent corruption
+* Cross-module coupling
 
 Any violation of this document is considered a **replicator architecture error**.
 
@@ -188,9 +196,9 @@ Any violation of this document is considered a **replicator architecture error**
 
 ## Summary
 
-- MMA2.0 defines the packet contract
-- the replicator **implements** the contract
-- packet composition is volatile and centralized
-- source data remains stable
+* MMA2.0 defines the packet contract
+* The replicator **implements** the contract
+* Packet composition is volatile and centralized
+* Source data remains stable
 
-> **Centralizing packet composition is mandatory for replicator correctness and long‑term safety.**
+> **Centralizing packet composition is mandatory for replicator correctness and long-term safety.**

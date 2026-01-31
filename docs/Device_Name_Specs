@@ -15,16 +15,16 @@ If a behavior is not stated here, it does not exist.
 
 It exists to:
 
-* give humans a stable identifier
-* allow downstream systems to label data correctly
-* re‑establish identity after trust boundaries are crossed
+* Give humans a stable identifier
+* Allow downstream systems to label data correctly
+* Re-establish identity after trust boundaries are crossed
 
 It does **not** exist to:
 
-* indicate liveness
-* indicate health
-* act as telemetry
-* act as a heartbeat
+* Indicate liveness
+* Indicate health
+* Act as telemetry
+* Act as a heartbeat
 
 Identity is static by nature. Treating it as dynamic is an error.
 
@@ -37,7 +37,7 @@ Identity is static by nature. Treating it as dynamic is an error.
 * State may change frequently
 * Identity must not
 
-`DEVICE_NAME` must therefore follow **different write rules** than status or data fields.
+`DEVICE_NAME` therefore follows **different write rules** than status or data fields.
 
 ---
 
@@ -51,10 +51,10 @@ Identity is static by nature. Treating it as dynamic is an error.
 
 It is **never written**:
 
-* during normal polling
-* during status updates
-* on every cycle
-* as part of routine writes
+* During normal polling
+* During status updates
+* On every cycle
+* As part of routine writes
 
 If none of the write conditions are met, **silence is correct behavior**.
 
@@ -68,10 +68,10 @@ This placement is intentional and mandatory.
 
 Reasons:
 
-* allows partial status writes
-* allows writers to stop early
-* minimizes packet size
-* preserves RBE behavior
+* Allows partial status writes
+* Allows writers to stop early
+* Minimizes packet size
+* Preserves RBE behavior
 
 Early fields may be written without touching identity.
 
@@ -85,9 +85,9 @@ Silence regarding `DEVICE_NAME` means:
 
 Silence does **not** mean:
 
-* identity missing
-* identity unknown
-* identity invalid
+* Identity missing
+* Identity unknown
+* Identity invalid
 
 Silence is meaningful only because trust rules are explicit.
 
@@ -99,11 +99,11 @@ A trust boundary is crossed when:
 
 * MMA restarts
 * MMA memory is cleared
-* the replicator reconnects after loss of connectivity
+* The replicator reconnects after loss of connectivity
 
 Crossing a trust boundary invalidates any assumption about identity persistence.
 
-In these cases, `DEVICE_NAME` **must be re‑asserted**.
+In these cases, `DEVICE_NAME` **must be re-asserted**.
 
 ---
 
@@ -112,7 +112,7 @@ In these cases, `DEVICE_NAME` **must be re‑asserted**.
 ### MMA Restart
 
 * MMA memory may be empty or invalid
-* Replicator must re‑write `DEVICE_NAME`
+* Replicator must re-write `DEVICE_NAME`
 * Identity becomes authoritative again
 
 ### Replicator Restart
@@ -123,8 +123,8 @@ In these cases, `DEVICE_NAME` **must be re‑asserted**.
 
 ### Network Interruption
 
-* Identity is re‑written only if MMA trust is lost
-* Temporary transport failures do not trigger identity writes
+* Identity is re-written **only if MMA trust is lost**
+* Temporary transport failures do **not** trigger identity writes
 
 ---
 
@@ -132,9 +132,9 @@ In these cases, `DEVICE_NAME` **must be re‑asserted**.
 
 * `DEVICE_NAME` has a fixed maximum length
 * Excess characters are truncated
-* Encoding is ASCII only
+* Encoding is **ASCII only**
 
-Exact limits are defined in `STATUS_BLOCK_LAYOUT.md`.
+Exact limits are defined in `Status_Block_Layout` documentation.
 
 ---
 
@@ -142,12 +142,12 @@ Exact limits are defined in `STATUS_BLOCK_LAYOUT.md`.
 
 `DEVICE_NAME` is **not**:
 
-* telemetry
-* metadata
-* configuration
-* heartbeat
-* versioning
-* ownership
+* Telemetry
+* Metadata
+* Configuration
+* Heartbeat
+* Versioning
+* Ownership
 
 It is **identity only**.
 
@@ -157,10 +157,10 @@ It is **identity only**.
 
 Writing identity repeatedly:
 
-* wastes bandwidth
-* breaks RBE semantics
-* increases packet size
-* creates false change signals
+* Wastes bandwidth
+* Breaks RBE semantics
+* Increases packet size
+* Creates false change signals
 
 Placing identity at the end of the block allows:
 
@@ -174,9 +174,9 @@ Identity is written rarely so that everything else can be written efficiently.
 
 * Identity is static
 * Silence is correct
-* Re‑assert only on trust loss
+* Re-assert only on trust loss
 * Never mix identity with telemetry
 
-`DEVICE_NAME` exists to make the system **human‑readable without making it noisy**.
+`DEVICE_NAME` exists to make the system **human-readable without making it noisy**.
 
 That balance is intentional and must not be broken.
