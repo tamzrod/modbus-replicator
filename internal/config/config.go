@@ -6,13 +6,7 @@ type Config struct {
 }
 
 type ReplicatorConfig struct {
-	StatusMemory *StatusMemoryConfig `yaml:"Status_Memory"`
-	Units        []UnitConfig        `yaml:"units"`
-}
-
-type StatusMemoryConfig struct {
-	Endpoint string `yaml:"endpoint"`
-	UnitID   uint8  `yaml:"unit_id"`
+	Units []UnitConfig `yaml:"units"`
 }
 
 // ---- UNIT ----
@@ -32,7 +26,7 @@ type SourceConfig struct {
 	UnitID    uint8  `yaml:"unit_id"`
 	TimeoutMs int    `yaml:"timeout_ms"`
 
-	// Device status block (optional)
+	// Device status block (optional, opt-in)
 	StatusSlot *uint16 `yaml:"status_slot"`
 	DeviceName string  `yaml:"device_name"`
 }
@@ -48,9 +42,11 @@ type ReadConfig struct {
 // ---- TARGET ----
 
 type TargetConfig struct {
-	ID       uint32         `yaml:"id"`
-	Endpoint string         `yaml:"endpoint"`
-	Memories []MemoryConfig `yaml:"memories"`
+	ID           uint32         `yaml:"id"`
+	Endpoint     string         `yaml:"endpoint"`
+	UnitID       uint8          `yaml:"unit_id"`        // data memory
+	StatusUnitID *uint8         `yaml:"status_unit_id"` // per-target status memory (optional)
+	Memories     []MemoryConfig `yaml:"memories"`
 }
 
 type MemoryConfig struct {

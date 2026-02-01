@@ -1,10 +1,11 @@
 # ============================================================
 # Modbus Replicator – Real End-to-End Test Configuration
+# (Per-Target Status Model)
 #
 # MMA Topology (already running):
 #   127.0.0.1:502, Unit 1 → Source Pretender
 #   127.0.0.1:502, Unit 2 → Replicator Target Memory
-#   127.0.0.1:502, Unit 3 → Status Memory
+#   127.0.0.1:502, Unit 3 → Status Memory (per target)
 #
 # Status Layout:
 #   status_slot = 0
@@ -12,13 +13,6 @@
 # ============================================================
 
 replicator:
-  # ------------------------------------------------------------
-  # Status memory endpoint (UNIT ID comes from status_slot)
-  # ------------------------------------------------------------
-  Status_Memory:
-    endpoint: "127.0.0.1:502"
-    unit_id: 3
-
   units:
     - id: "unit-1"
 
@@ -29,36 +23,40 @@ replicator:
         endpoint: "127.0.0.1:502"
         unit_id: 1                  # SOURCE PRETENDER
         device_name: "INV-TEST-01"
-        status_slot: 0              # STATUS MEMORY → slots 0–19 (Unit 3)
+        status_slot: 0              # slots 0–19
 
       # --------------------------------------------------------
       # READ GEOMETRY
       # --------------------------------------------------------
       reads:
-        - fc: 1     # coils
+        - fc: 1
           address: 0
           quantity: 50
 
-        - fc: 2     # discrete inputs
+        - fc: 2
           address: 0
           quantity: 50
 
-        - fc: 3     # holding registers
+        - fc: 3
           address: 0
           quantity: 50
 
-        - fc: 4     # input registers
+        - fc: 4
           address: 0
           quantity: 50
 
       # --------------------------------------------------------
-      # TARGET (Replicator Memory)
+      # TARGET (Replicator Memory + Status)
       # --------------------------------------------------------
       targets:
-        - id: 2                    # REPLICATOR TARGET MEMORY
+        - id: 2
           endpoint: "127.0.0.1:502"
+          unit_id: 2                # DATA memory
+          status_unit_id: 3         # STATUS memory (was global before)
+
           memories:
-            - offsets: {}          # 1:1 address mapping
+            - memory_id: 2
+              offsets: {}
 
       # --------------------------------------------------------
       # POLLING

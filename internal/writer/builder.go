@@ -11,29 +11,13 @@ import (
 
 // BuildPlan converts one unit config into a Writer Plan.
 // Assumes config has already passed validation.
-func BuildPlan(
-	u cfg.UnitConfig,
-	statusUnitID uint16,
-) (Plan, error) {
+func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 	if u.ID == "" {
 		return Plan{}, errors.New("writer: unit.id required")
 	}
 
 	plan := Plan{
 		UnitID: u.ID,
-	}
-
-	// ------------------------------------------------------------
-	// STATUS PLAN (OPT-IN)
-	// ------------------------------------------------------------
-	if u.Source.StatusSlot != nil {
-		plan.Status = &StatusPlan{
-			// Endpoint is resolved via Status_Memory at higher level
-			Endpoint:   "",
-			UnitID:     statusUnitID,
-			BaseSlot:   *u.Source.StatusSlot,
-			DeviceName: u.Source.DeviceName,
-		}
 	}
 
 	// ------------------------------------------------------------
@@ -54,6 +38,20 @@ func BuildPlan(
 		plan.Targets = append(plan.Targets, ep)
 	}
 
+	// ------------------------------------------------------------
+	// STATUS PLANS (PER TARGET, OPT-IN)
+	// ------------------------------------------------------------
+	if u.Source.StatusSlot != nil {
+		for _, t := range u.Targets {
+			plan.Status = append(plan.Status, StatusPlan{
+				Endpoint:   t.Endpoint,
+				UnitID:     *t.StatusUnitID,
+				BaseSlot:   *u.Source.StatusSlot,
+				DeviceName: u.Source.DeviceName,
+			})
+		}
+	}
+
 	return plan, nil
 }
 
@@ -61,23 +59,12 @@ func BuildPlan(
 // as writer.endpointClient interfaces.
 func BuildEndpointClients(
 	u cfg.UnitConfig,
-	statusEndpoint string,
 ) (map[string]endpointClient, func() error, error) {
 
 	unique := map[string]struct{}{}
 
-	// ------------------------------------------------------------
-	// TARGET ENDPOINTS
-	// ------------------------------------------------------------
 	for _, t := range u.Targets {
 		unique[t.Endpoint] = struct{}{}
-	}
-
-	// ------------------------------------------------------------
-	// STATUS ENDPOINT (if enabled)
-	// ------------------------------------------------------------
-	if u.Source.StatusSlot != nil && statusEndpoint != "" {
-		unique[statusEndpoint] = struct{}{}
 	}
 
 	clients := make(map[string]endpointClient)

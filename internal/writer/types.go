@@ -16,11 +16,10 @@ type TargetEndpoint struct {
 	Memories []MemoryDest
 }
 
-// StatusPlan describes where and how device status is written.
-// If nil, status writing is disabled for this unit.
+// StatusPlan describes where and how device status is written for ONE target.
 type StatusPlan struct {
 	Endpoint   string
-	UnitID     uint16
+	UnitID     uint8
 	BaseSlot   uint16
 	DeviceName string
 }
@@ -29,7 +28,7 @@ type StatusPlan struct {
 type Plan struct {
 	UnitID  string
 	Targets []TargetEndpoint
-	Status  *StatusPlan
+	Status  []StatusPlan // per-target status (hot-standby replication)
 }
 
 // Writer writes poll snapshots into targets.

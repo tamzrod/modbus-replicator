@@ -10,13 +10,12 @@ import (
 )
 
 // StatusWriter is the delivery-only contract for device status.
-// It receives a snapshot and writes it verbatim.
 // No logic, no state, no interpretation.
 type StatusWriter interface {
 	WriteStatus(s status.Snapshot) error
 }
 
-// deviceStatusWriter is the concrete implementation used by the replicator.
+// deviceStatusWriter writes status for ONE target (replica).
 type deviceStatusWriter struct {
 	plan *StatusPlan
 	cli  endpointClient
@@ -28,31 +27,34 @@ type deviceStatusWriter struct {
 
 const statusAreaHoldingRegisters byte = 3
 
-// NewDeviceStatusWriter builds a status writer if status is enabled for the unit.
-// If plan.Status is nil, status is disabled.
-func NewDeviceStatusWriter(plan Plan, clients map[string]endpointClient) (*deviceStatusWriter, bool) {
-	if plan.Status == nil {
-		return nil, false
+// NewDeviceStatusWriters builds per-target status writers.
+// Returns empty slice if status is disabled.
+func NewDeviceStatusWriters(plan Plan, clients map[string]endpointClient) []StatusWriter {
+	var out []StatusWriter
+
+	for _, sp := range plan.Status {
+		cli := clients[sp.Endpoint]
+		if cli == nil {
+			continue
+		}
+
+		out = append(out, &deviceStatusWriter{
+			plan:     &sp,
+			cli:      cli,
+			needFull: true, // full re-assert on first success
+			last: status.Snapshot{
+				Health:         status.HealthUnknown,
+				LastErrorCode:  0,
+				SecondsInError: 0,
+			},
+			nameRegs: encodeDeviceNameRegs(sp.DeviceName),
+		})
 	}
 
-	sp := plan.Status
-	cli := clients[sp.Endpoint]
-
-	return &deviceStatusWriter{
-		plan:     sp,
-		cli:      cli,
-		needFull: true, // full re-assert on first successful write
-		last: status.Snapshot{
-			Health:         status.HealthUnknown,
-			LastErrorCode:  0,
-			SecondsInError: 0,
-		},
-		nameRegs: encodeDeviceNameRegs(sp.DeviceName),
-	}, true
+	return out
 }
 
 // WriteStatus delivers a device status snapshot into status memory.
-// On any write failure, the next successful call will re-assert the full block.
 func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 	if sw == nil || sw.plan == nil {
 		return errors.New("status writer: disabled")
@@ -60,19 +62,14 @@ func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 	if sw.cli == nil {
 		return fmt.Errorf("status writer: missing client for endpoint %s", sw.plan.Endpoint)
 	}
-	if sw.plan.UnitID > 255 {
-		return fmt.Errorf("status writer: unit id %d out of range", sw.plan.UnitID)
-	}
 
-	// ------------------------------------------------------------
 	// HARD INVARIANT: seconds_in_error MUST NOT wrap
-	// ------------------------------------------------------------
 	if s.SecondsInError > 65535 {
 		s.SecondsInError = 65535
 	}
 
 	baseAddr := sw.baseAddr()
-	unitID := uint8(sw.plan.UnitID)
+	unitID := sw.plan.UnitID
 
 	// ------------------------------------------------------------
 	// Full block write (identity re-assert)
@@ -105,7 +102,7 @@ func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 			baseAddr+status.SlotHealthCode,
 			[]uint16{s.Health},
 		); err != nil {
-			errs = append(errs, fmt.Sprintf("slot0 health write failed: %v", err))
+			errs = append(errs, err.Error())
 		} else {
 			sw.last.Health = s.Health
 		}
@@ -119,7 +116,7 @@ func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 			baseAddr+status.SlotLastErrorCode,
 			[]uint16{s.LastErrorCode},
 		); err != nil {
-			errs = append(errs, fmt.Sprintf("slot1 last_error write failed: %v", err))
+			errs = append(errs, err.Error())
 		} else {
 			sw.last.LastErrorCode = s.LastErrorCode
 		}
@@ -133,7 +130,7 @@ func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 			baseAddr+status.SlotSecondsInError,
 			[]uint16{s.SecondsInError},
 		); err != nil {
-			errs = append(errs, fmt.Sprintf("slot2 seconds write failed: %v", err))
+			errs = append(errs, err.Error())
 		} else {
 			sw.last.SecondsInError = s.SecondsInError
 		}
@@ -142,7 +139,7 @@ func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 	if len(errs) > 0 {
 		// Any partial failure introduces doubt — re-assert on next success.
 		sw.needFull = true
-		return errors.New("status writer: " + strings.Join(errs, " | "))
+		return errors.New(strings.Join(errs, " | "))
 	}
 
 	return nil
@@ -161,12 +158,10 @@ func (sw *deviceStatusWriter) fullBlockRegs(s status.Snapshot) []uint16 {
 	regs[status.SlotLastErrorCode] = s.LastErrorCode
 	regs[status.SlotSecondsInError] = s.SecondsInError
 
-	// Slots 3..(device name start - 1) are RESERVED → left as zero
-
 	// Device name always lives at the end of the block
 	for i := 0; i < status.SlotDeviceNameSlots; i++ {
 		dst := status.SlotDeviceNameStart + i
-		if dst >= 0 && dst < len(regs) && i < len(sw.nameRegs) {
+		if dst < len(regs) && i < len(sw.nameRegs) {
 			regs[dst] = sw.nameRegs[i]
 		}
 	}

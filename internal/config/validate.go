@@ -16,11 +16,11 @@ func Validate(cfg *Config) error {
 	}
 
 	// ------------------------------------------------------------
-	// DEVICE STATUS BLOCK VALIDATION (OPT-IN)
+	// DEVICE STATUS BLOCK VALIDATION (PER-TARGET, OPT-IN)
 	// ------------------------------------------------------------
 
-	statusUsed := false
-	slotOwner := make(map[uint16]string)
+	// key = endpoint | status_unit_id | status_slot
+	statusOwner := make(map[string]string)
 
 	for _, u := range cfg.Replicator.Units {
 		// device_name sanity (ASCII only)
@@ -35,32 +35,50 @@ func Validate(cfg *Config) error {
 			}
 		}
 
-		// status is opt-in; only validate if status_slot is provided
+		// status is opt-in
 		if u.Source.StatusSlot == nil {
 			continue
 		}
 
-		statusUsed = true
-		slot := *u.Source.StatusSlot
-
-		// status_slot uniqueness
-		if prev, exists := slotOwner[slot]; exists {
+		// status requires at least one target
+		if len(u.Targets) == 0 {
 			return fmt.Errorf(
-				"status_slot collision: slot=%d used by units %q and %q",
-				slot,
-				prev,
+				"unit %q: status_slot is set but no targets are defined",
 				u.ID,
 			)
 		}
-		slotOwner[slot] = u.ID
-	}
 
-	// Status_Memory is required only if status is used
-	if statusUsed {
-		if cfg.Replicator.StatusMemory == nil || cfg.Replicator.StatusMemory.Endpoint == "" {
-			return fmt.Errorf(
-				"Status_Memory.endpoint must be defined when any unit uses status_slot",
+		slot := *u.Source.StatusSlot
+
+		for _, t := range u.Targets {
+			// each target must declare status_unit_id
+			if t.StatusUnitID == nil {
+				return fmt.Errorf(
+					"unit %q: status_slot is set but target %q has no status_unit_id",
+					u.ID,
+					t.Endpoint,
+				)
+			}
+
+			key := fmt.Sprintf(
+				"%s|%d|%d",
+				t.Endpoint,
+				*t.StatusUnitID,
+				slot,
 			)
+
+			if prev, exists := statusOwner[key]; exists {
+				return fmt.Errorf(
+					"status_slot collision: endpoint=%s status_unit_id=%d slot=%d used by units %q and %q",
+					t.Endpoint,
+					*t.StatusUnitID,
+					slot,
+					prev,
+					u.ID,
+				)
+			}
+
+			statusOwner[key] = u.ID
 		}
 	}
 
