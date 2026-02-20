@@ -1,0 +1,131 @@
+# ============================================================
+# Modbus Replicator – Energy Meter Replication
+# (Per-Target Status Model – Shared Status Unit)
+#
+# MMA Topology:
+#   127.0.0.1:502, Unit 1  → m100 data
+#   127.0.0.1:502, Unit 2  → m200 data
+#   127.0.0.1:502, Unit 3  → m300 data
+#   127.0.0.1:502, Unit 100 → Shared Status Memory
+#
+# Status Layout (Unit 100):
+#   m100 → status_slot 0 → registers 0–19
+#   m200 → status_slot 1 → registers 20–39
+#   m300 → status_slot 2 → registers 40–59
+#
+# Read Geometry:
+#   FC3 (Holding Registers)
+#   Power Block  → start 999  quantity 30
+#   Energy Block → start 1099 quantity 16
+# ============================================================
+
+replicator:
+
+  units:
+
+    # ========================================================
+    # METER m100
+    # ========================================================
+    - id: "m100"
+
+      source:
+        endpoint: "10.5.1.29:502"
+        unit_id: 1
+        device_name: "m100"
+        status_slot: 0
+
+      reads:
+        # Power block
+        - fc: 3
+          address: 999
+          quantity: 30
+
+        # Energy block
+        - fc: 3
+          address: 1099
+          quantity: 16
+
+      targets:
+        - id: 1
+          endpoint: "127.0.0.1:502"
+          unit_id: 1
+          status_unit_id: 100
+
+          memories:
+            - memory_id: 1
+              offsets: {}
+
+      poll:
+        interval_ms: 1000
+
+
+    # ========================================================
+    # METER m200
+    # ========================================================
+    - id: "m200"
+
+      source:
+        endpoint: "10.5.1.30:502"
+        unit_id: 1
+        device_name: "m200"
+        status_slot: 1
+
+      reads:
+        # Power block
+        - fc: 3
+          address: 999
+          quantity: 30
+
+        # Energy block
+        - fc: 3
+          address: 1099
+          quantity: 16
+
+      targets:
+        - id: 2
+          endpoint: "127.0.0.1:502"
+          unit_id: 2
+          status_unit_id: 100
+
+          memories:
+            - memory_id: 2
+              offsets: {}
+
+      poll:
+        interval_ms: 1000
+
+
+    # ========================================================
+    # METER m300
+    # ========================================================
+    - id: "m300"
+
+      source:
+        endpoint: "10.5.1.32:502"
+        unit_id: 1
+        device_name: "m300"
+        status_slot: 2
+
+      reads:
+        # Power block
+        - fc: 3
+          address: 999
+          quantity: 30
+
+        # Energy block
+        - fc: 3
+          address: 1099
+          quantity: 16
+
+      targets:
+        - id: 3
+          endpoint: "127.0.0.1:502"
+          unit_id: 3
+          status_unit_id: 100
+
+          memories:
+            - memory_id: 3
+              offsets: {}
+
+      poll:
+        interval_ms: 1000
