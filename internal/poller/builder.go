@@ -8,24 +8,16 @@ import (
 	pmodbus "github.com/tamzrod/modbus-replicator/internal/poller/modbus"
 )
 
-// Build constructs a Poller and wires Modbus client lifecycle.
-// Connection is reused while healthy.
-// On transport death, Poller discards the client and uses factory on a future tick.
-// No retries, no loops, no semantics.
+// Build constructs a Poller without touching the network.
+// No dialing at startup. Device availability is runtime state.
 func Build(u cfg.UnitConfig) (*Poller, func() error, error) {
-	// client factory: ONE attempt per call
+
 	factory := func() (Client, error) {
 		return pmodbus.New(pmodbus.Config{
 			Endpoint: u.Source.Endpoint,
 			UnitID:   u.Source.UnitID,
 			Timeout:  time.Duration(u.Source.TimeoutMs) * time.Millisecond,
 		})
-	}
-
-	// initial client (fail fast at startup)
-	client, err := factory()
-	if err != nil {
-		return nil, nil, err
 	}
 
 	reads := make([]ReadBlock, 0, len(u.Reads))
@@ -43,13 +35,12 @@ func Build(u cfg.UnitConfig) (*Poller, func() error, error) {
 			Interval: time.Duration(u.Poll.IntervalMs) * time.Millisecond,
 			Reads:    reads,
 		},
-		client,
-		factory,
+		nil,      // no initial client
+		factory,  // lazy connection
 	)
 	if err != nil {
 		return nil, nil, err
 	}
 
-	// No-op closer: poller handles client lifecycle internally
 	return p, func() error { return nil }, nil
 }
