@@ -66,7 +66,7 @@ func main() {
 		out := make(chan poller.PollResult)
 
 		// ---- orchestrator ----
-		go func(unitID string) {
+		go func(unitID string, p *poller.Poller) {
 			snap := status.Snapshot{
 				Health:         status.HealthUnknown,
 				LastErrorCode:  0,
@@ -95,8 +95,12 @@ func main() {
 						continue
 					}
 
+					changed := false
+
+					// ----------------------------
+					// Health logic (unchanged semantics)
+					// ----------------------------
 					if res.Err == nil {
-						changed := false
 						if snap.Health != status.HealthOK {
 							snap.Health = status.HealthOK
 							changed = true
@@ -109,14 +113,7 @@ func main() {
 							snap.SecondsInError = 0
 							changed = true
 						}
-
-						if changed {
-							for _, sw := range statusWriters {
-								_ = sw.WriteStatus(snap)
-							}
-						}
 					} else {
-						changed := false
 						if snap.Health != status.HealthError {
 							snap.Health = status.HealthError
 							changed = true
@@ -127,11 +124,41 @@ func main() {
 							snap.LastErrorCode = code
 							changed = true
 						}
+					}
 
-						if changed {
-							for _, sw := range statusWriters {
-								_ = sw.WriteStatus(snap)
-							}
+					// ----------------------------
+					// Transport counters injection (passive)
+					// ----------------------------
+					c := p.Counters()
+
+					if snap.RequestsTotal != c.RequestsTotal {
+						snap.RequestsTotal = c.RequestsTotal
+						changed = true
+					}
+					if snap.ResponsesValidTotal != c.ResponsesValidTotal {
+						snap.ResponsesValidTotal = c.ResponsesValidTotal
+						changed = true
+					}
+					if snap.TimeoutsTotal != c.TimeoutsTotal {
+						snap.TimeoutsTotal = c.TimeoutsTotal
+						changed = true
+					}
+					if snap.TransportErrorsTotal != c.TransportErrorsTotal {
+						snap.TransportErrorsTotal = c.TransportErrorsTotal
+						changed = true
+					}
+					if snap.ConsecutiveFailCurr != c.ConsecutiveFailCurr {
+						snap.ConsecutiveFailCurr = c.ConsecutiveFailCurr
+						changed = true
+					}
+					if snap.ConsecutiveFailMax != c.ConsecutiveFailMax {
+						snap.ConsecutiveFailMax = c.ConsecutiveFailMax
+						changed = true
+					}
+
+					if changed {
+						for _, sw := range statusWriters {
+							_ = sw.WriteStatus(snap)
 						}
 					}
 
@@ -147,7 +174,7 @@ func main() {
 					}
 				}
 			}
-		}(unit.ID)
+		}(unit.ID, p)
 
 		go p.Run(ctx, out)
 	}

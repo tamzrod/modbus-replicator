@@ -1,0 +1,37 @@
+
+replicator:
+
+  units:
+
+    # ========================================================
+    # METER m100
+    # ========================================================
+    - id: "m100"
+
+      source:
+        endpoint: "127.0.0.1:502"
+        unit_id: 1
+        device_name: "m100"
+        status_slot: 0
+
+      reads:
+        # test
+        - fc: 3
+          address: 0
+          quantity: 30
+      
+      targets:
+        - id: 1
+          endpoint: "127.0.0.1:502"
+          unit_id: 2
+          status_unit_id: 100
+
+          memories:
+            - memory_id: 1
+              offsets: {}
+
+      poll:
+        interval_ms: 1000
+
+
+  

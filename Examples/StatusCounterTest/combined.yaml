@@ -1,0 +1,91 @@
+listeners:
+  - id: main
+    listen: ":1502"
+
+    memory:
+
+      # ==============================
+      # test source (replicator READS here)
+      # ==============================
+      - unit_id: 1
+        holding_registers:
+          start: 0
+          count: 119   # 0–118
+        policy:
+          rules:
+            - id: source-read
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [3]
+
+
+      # ==============================
+      # test destination (replicator WRITES data here)
+      # ==============================
+      - unit_id: 2
+        holding_registers:
+          start: 0
+          count: 119
+        policy:
+          rules:
+            - id: dest-rw-for-test
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [3, 16]
+
+
+      # ==============================
+      # STATUS MEMORY (replicator WRITES status/counters here)
+      # 30 regs per device status block
+      # Example sizing: 20 slots × 30 regs = 600 regs
+      # slot 0 base = 0
+      # slot 1 base = 30
+      # slot 19 base = 570
+      # ==============================
+      - unit_id: 100
+        holding_registers:
+          start: 0
+          count: 600
+        policy:
+          rules:
+            - id: status-rw-for-test
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [3, 16]
+
+
+replicator:
+
+  units:
+
+    # ========================================================
+    # METER m100
+    # ========================================================
+    - id: "m100"
+
+      source:
+        endpoint: "127.0.0.1:1502"
+        unit_id: 1
+        device_name: "m100"
+        status_slot: 0
+
+      reads:
+        - fc: 3
+          address: 0
+          quantity: 30
+
+      targets:
+        - id: 1
+          endpoint: "127.0.0.1:1502"
+          unit_id: 2
+          status_unit_id: 100
+
+          memories:
+            - memory_id: 1
+              offsets: {}
+
+      poll:
+        interval_ms: 1000

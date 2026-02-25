@@ -11,11 +11,13 @@ func TestDeviceNameWrittenOnFullAssertOnly(t *testing.T) {
 	cli := &fakeEndpointClient{}
 
 	plan := Plan{
-		Status: &StatusPlan{
-			Endpoint:   "status-endpoint",
-			UnitID:     1,
-			BaseSlot:   0,
-			DeviceName: "DEV-01",
+		Status: []StatusPlan{
+			{
+				Endpoint:   "status-endpoint",
+				UnitID:     1,
+				BaseSlot:   0,
+				DeviceName: "DEV-01",
+			},
 		},
 	}
 
@@ -23,10 +25,12 @@ func TestDeviceNameWrittenOnFullAssertOnly(t *testing.T) {
 		"status-endpoint": cli,
 	}
 
-	sw, enabled := NewDeviceStatusWriter(plan, clients)
-	if !enabled {
-		t.Fatalf("status writer should be enabled")
+	writers := NewDeviceStatusWriters(plan, clients)
+	if len(writers) != 1 {
+		t.Fatalf("expected 1 status writer, got %d", len(writers))
 	}
+
+	sw := writers[0]
 
 	// ---- first write: FULL ASSERT ----
 	first := status.Snapshot{
@@ -39,7 +43,6 @@ func TestDeviceNameWrittenOnFullAssertOnly(t *testing.T) {
 		t.Fatalf("initial full assert failed: %v", err)
 	}
 
-	// Expect full block
 	if len(cli.lastRegs) != status.SlotsPerDevice {
 		t.Fatalf(
 			"expected full block write (%d regs), got %d",
@@ -48,8 +51,7 @@ func TestDeviceNameWrittenOnFullAssertOnly(t *testing.T) {
 		)
 	}
 
-	// Verify device name encoding EXACTLY
-	expectedNameRegs := encodeDeviceNameRegs(plan.Status.DeviceName)
+	expectedNameRegs := encodeDeviceNameRegs("DEV-01")
 
 	for i := 0; i < status.SlotDeviceNameSlots; i++ {
 		slot := status.SlotDeviceNameStart + i
@@ -74,7 +76,6 @@ func TestDeviceNameWrittenOnFullAssertOnly(t *testing.T) {
 		t.Fatalf("incremental write failed: %v", err)
 	}
 
-	// Incremental update must NOT re-write full block
 	if len(cli.lastRegs) == status.SlotsPerDevice {
 		t.Fatalf("device name should not be rewritten on incremental update")
 	}
@@ -84,11 +85,13 @@ func TestSecondsInErrorResetOnRecovery(t *testing.T) {
 	cli := &fakeEndpointClient{}
 
 	plan := Plan{
-		Status: &StatusPlan{
-			Endpoint:   "status-endpoint",
-			UnitID:     1,
-			BaseSlot:   0,
-			DeviceName: "DEV-01",
+		Status: []StatusPlan{
+			{
+				Endpoint:   "status-endpoint",
+				UnitID:     1,
+				BaseSlot:   0,
+				DeviceName: "DEV-01",
+			},
 		},
 	}
 
@@ -96,10 +99,12 @@ func TestSecondsInErrorResetOnRecovery(t *testing.T) {
 		"status-endpoint": cli,
 	}
 
-	sw, enabled := NewDeviceStatusWriter(plan, clients)
-	if !enabled {
-		t.Fatalf("status writer should be enabled")
+	writers := NewDeviceStatusWriters(plan, clients)
+	if len(writers) != 1 {
+		t.Fatalf("expected 1 status writer, got %d", len(writers))
 	}
+
+	sw := writers[0]
 
 	// simulate ERROR
 	errSnap := status.Snapshot{
@@ -123,7 +128,7 @@ func TestSecondsInErrorResetOnRecovery(t *testing.T) {
 		t.Fatalf("recovery snapshot write failed: %v", err)
 	}
 
-	expectedAddr := plan.Status.BaseSlot*status.SlotsPerDevice + status.SlotSecondsInError
+	expectedAddr := uint16(0)*status.SlotsPerDevice + status.SlotSecondsInError
 
 	if cli.lastRegsAddr != expectedAddr {
 		t.Fatalf("unexpected write addr: got=%d want=%d", cli.lastRegsAddr, expectedAddr)

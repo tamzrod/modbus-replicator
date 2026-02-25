@@ -1,0 +1,62 @@
+listeners:
+  - id: main
+    listen: ":502"
+
+    memory:
+
+      # ==============================
+      # test source
+      # ==============================
+      - unit_id: 1
+
+        holding_registers:
+          start: 0
+          count: 119   # 998–1116
+
+        policy:
+          rules:
+            - id: read-only
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [3]
+
+
+      # ==============================
+      # test destination for status counters
+      # ==============================
+      - unit_id: 2
+
+        holding_registers:
+          start: 0
+          count: 119
+
+        policy:
+          rules:
+            - id: read-only
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [3]
+
+
+ 
+      # ==============================
+      # UNIT 100 → STATUS MEMORY
+      # 20 slots × 20 registers
+      # Slot 1 = 0–19
+      # Slot 20 = 380–399
+      # ==============================
+      - unit_id: 100
+
+        holding_registers:
+          start: 0
+          count: 400
+
+        policy:
+          rules:
+            - id: read-only
+              source_ip:
+                - 0.0.0.0/0
+                - ::/0
+              allow_fc: [3]

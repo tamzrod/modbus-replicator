@@ -34,3 +34,24 @@ type PollResult struct {
 	Blocks []BlockResult
 	Err    error // non-nil means the poll cycle failed
 }
+
+// TransportCounters holds lifetime transport instrumentation
+// for a single polling unit.
+//
+// These counters:
+// - Are monotonic
+// - Are integer-only
+// - Do not influence control flow
+// - Do not trigger retries
+// - Do not alter scheduling
+//
+// They are passive observability only.
+type TransportCounters struct {
+	RequestsTotal        uint32
+	ResponsesValidTotal  uint32
+	TimeoutsTotal        uint32
+	TransportErrorsTotal uint32
+
+	ConsecutiveFailCurr uint16
+	ConsecutiveFailMax  uint16
+}

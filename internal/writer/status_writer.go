@@ -41,7 +41,7 @@ func NewDeviceStatusWriters(plan Plan, clients map[string]endpointClient) []Stat
 		out = append(out, &deviceStatusWriter{
 			plan:     &sp,
 			cli:      cli,
-			needFull: true, // full re-assert on first success
+			needFull: true,
 			last: status.Snapshot{
 				Health:         status.HealthUnknown,
 				LastErrorCode:  0,
@@ -54,7 +54,6 @@ func NewDeviceStatusWriters(plan Plan, clients map[string]endpointClient) []Stat
 	return out
 }
 
-// WriteStatus delivers a device status snapshot into status memory.
 func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 	if sw == nil || sw.plan == nil {
 		return errors.New("status writer: disabled")
@@ -63,16 +62,15 @@ func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 		return fmt.Errorf("status writer: missing client for endpoint %s", sw.plan.Endpoint)
 	}
 
-	// HARD INVARIANT: seconds_in_error MUST NOT wrap
 	if s.SecondsInError > 65535 {
 		s.SecondsInError = 65535
 	}
 
 	baseAddr := sw.baseAddr()
-	unitID := sw.plan.UnitID
+	unitID := uint8(sw.plan.UnitID)
 
 	// ------------------------------------------------------------
-	// Full block write (identity re-assert)
+	// FULL BLOCK RE-ASSERT
 	// ------------------------------------------------------------
 	if sw.needFull {
 		regs := sw.fullBlockRegs(s)
@@ -94,50 +92,71 @@ func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 
 	var errs []string
 
-	// Slot 0 — health_code
+	// --- SLOT 0 ---
 	if sw.last.Health != s.Health {
-		if err := sw.cli.WriteRegisters(
-			statusAreaHoldingRegisters,
-			unitID,
-			baseAddr+status.SlotHealthCode,
-			[]uint16{s.Health},
-		); err != nil {
+		if err := sw.writeOne(baseAddr+status.SlotHealthCode, unitID, s.Health); err != nil {
 			errs = append(errs, err.Error())
 		} else {
 			sw.last.Health = s.Health
 		}
 	}
 
-	// Slot 1 — last_error_code
+	// --- SLOT 1 ---
 	if sw.last.LastErrorCode != s.LastErrorCode {
-		if err := sw.cli.WriteRegisters(
-			statusAreaHoldingRegisters,
-			unitID,
-			baseAddr+status.SlotLastErrorCode,
-			[]uint16{s.LastErrorCode},
-		); err != nil {
+		if err := sw.writeOne(baseAddr+status.SlotLastErrorCode, unitID, s.LastErrorCode); err != nil {
 			errs = append(errs, err.Error())
 		} else {
 			sw.last.LastErrorCode = s.LastErrorCode
 		}
 	}
 
-	// Slot 2 — seconds_in_error
+	// --- SLOT 2 ---
 	if sw.last.SecondsInError != s.SecondsInError {
-		if err := sw.cli.WriteRegisters(
-			statusAreaHoldingRegisters,
-			unitID,
-			baseAddr+status.SlotSecondsInError,
-			[]uint16{s.SecondsInError},
-		); err != nil {
+		if err := sw.writeOne(baseAddr+status.SlotSecondsInError, unitID, s.SecondsInError); err != nil {
 			errs = append(errs, err.Error())
 		} else {
 			sw.last.SecondsInError = s.SecondsInError
 		}
 	}
 
+	// --- TRANSPORT COUNTERS (20–29) ---
+	sw.writeUint32(&errs, baseAddr+status.SlotRequestsTotalLow, unitID,
+		sw.last.RequestsTotal, s.RequestsTotal,
+		func(v uint32) { sw.last.RequestsTotal = v },
+	)
+
+	sw.writeUint32(&errs, baseAddr+status.SlotResponsesValidTotalLow, unitID,
+		sw.last.ResponsesValidTotal, s.ResponsesValidTotal,
+		func(v uint32) { sw.last.ResponsesValidTotal = v },
+	)
+
+	sw.writeUint32(&errs, baseAddr+status.SlotTimeoutsTotalLow, unitID,
+		sw.last.TimeoutsTotal, s.TimeoutsTotal,
+		func(v uint32) { sw.last.TimeoutsTotal = v },
+	)
+
+	sw.writeUint32(&errs, baseAddr+status.SlotTransportErrorsTotalLow, unitID,
+		sw.last.TransportErrorsTotal, s.TransportErrorsTotal,
+		func(v uint32) { sw.last.TransportErrorsTotal = v },
+	)
+
+	if sw.last.ConsecutiveFailCurr != s.ConsecutiveFailCurr {
+		if err := sw.writeOne(baseAddr+status.SlotConsecutiveFailCurr, unitID, s.ConsecutiveFailCurr); err != nil {
+			errs = append(errs, err.Error())
+		} else {
+			sw.last.ConsecutiveFailCurr = s.ConsecutiveFailCurr
+		}
+	}
+
+	if sw.last.ConsecutiveFailMax != s.ConsecutiveFailMax {
+		if err := sw.writeOne(baseAddr+status.SlotConsecutiveFailMax, unitID, s.ConsecutiveFailMax); err != nil {
+			errs = append(errs, err.Error())
+		} else {
+			sw.last.ConsecutiveFailMax = s.ConsecutiveFailMax
+		}
+	}
+
 	if len(errs) > 0 {
-		// Any partial failure introduces doubt — re-assert on next success.
 		sw.needFull = true
 		return errors.New(strings.Join(errs, " | "))
 	}
@@ -146,31 +165,66 @@ func (sw *deviceStatusWriter) WriteStatus(s status.Snapshot) error {
 }
 
 func (sw *deviceStatusWriter) baseAddr() uint16 {
-	// Each device owns a fixed SlotsPerDevice block.
 	return sw.plan.BaseSlot * status.SlotsPerDevice
 }
 
 func (sw *deviceStatusWriter) fullBlockRegs(s status.Snapshot) []uint16 {
 	regs := make([]uint16, status.SlotsPerDevice)
 
-	// Slots 0–2: live status
 	regs[status.SlotHealthCode] = s.Health
 	regs[status.SlotLastErrorCode] = s.LastErrorCode
 	regs[status.SlotSecondsInError] = s.SecondsInError
 
-	// Device name always lives at the end of the block
 	for i := 0; i < status.SlotDeviceNameSlots; i++ {
 		dst := status.SlotDeviceNameStart + i
-		if dst < len(regs) && i < len(sw.nameRegs) {
+		if i < len(sw.nameRegs) {
 			regs[dst] = sw.nameRegs[i]
 		}
 	}
 
+	encodeUint32(regs, status.SlotRequestsTotalLow, s.RequestsTotal)
+	encodeUint32(regs, status.SlotResponsesValidTotalLow, s.ResponsesValidTotal)
+	encodeUint32(regs, status.SlotTimeoutsTotalLow, s.TimeoutsTotal)
+	encodeUint32(regs, status.SlotTransportErrorsTotalLow, s.TransportErrorsTotal)
+
+	regs[status.SlotConsecutiveFailCurr] = s.ConsecutiveFailCurr
+	regs[status.SlotConsecutiveFailMax] = s.ConsecutiveFailMax
+
 	return regs
 }
 
-// encodeDeviceNameRegs packs up to 16 ASCII characters into 8 uint16 registers.
-// Each register stores two ASCII bytes in big-endian order.
+func encodeUint32(regs []uint16, start int, v uint32) {
+	regs[start] = uint16(v & 0xFFFF)
+	regs[start+1] = uint16((v >> 16) & 0xFFFF)
+}
+
+func (sw *deviceStatusWriter) writeUint32(
+	errs *[]string,
+	addr uint16,
+	unitID uint8,
+	prev uint32,
+	curr uint32,
+	update func(uint32),
+) {
+	if prev == curr {
+		return
+	}
+
+	lo := uint16(curr & 0xFFFF)
+	hi := uint16((curr >> 16) & 0xFFFF)
+
+	if err := sw.cli.WriteRegisters(statusAreaHoldingRegisters, unitID, addr, []uint16{lo, hi}); err != nil {
+		*errs = append(*errs, err.Error())
+		return
+	}
+
+	update(curr)
+}
+
+func (sw *deviceStatusWriter) writeOne(addr uint16, unitID uint8, v uint16) error {
+	return sw.cli.WriteRegisters(statusAreaHoldingRegisters, unitID, addr, []uint16{v})
+}
+
 func encodeDeviceNameRegs(name string) []uint16 {
 	out := make([]uint16, status.SlotDeviceNameSlots)
 
@@ -179,7 +233,6 @@ func encodeDeviceNameRegs(name string) []uint16 {
 		b = b[:status.DeviceNameMaxChars]
 	}
 
-	// sanitize to printable ASCII
 	for i := 0; i < len(b); i++ {
 		if b[i] < 0x20 || b[i] > 0x7E {
 			b[i] = '?'

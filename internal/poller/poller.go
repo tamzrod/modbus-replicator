@@ -33,6 +33,9 @@ type Poller struct {
 
 	client  Client
 	factory func() (Client, error)
+
+	// Transport lifetime instrumentation (passive only)
+	counters TransportCounters
 }
 
 // New creates a poller with immutable config.
@@ -64,6 +67,10 @@ func New(cfg Config, client Client, factory func() (Client, error)) (*Poller, er
 // - if client is nil, try to create once via factory
 // - on a "dead connection" error, discard client (so next tick can recreate)
 func (p *Poller) PollOnce() PollResult {
+
+	// Increment request attempt (one per poll cycle)
+	p.counters.RequestsTotal++
+
 	res := PollResult{
 		UnitID: p.cfg.UnitID,
 		At:     time.Now(),
@@ -73,11 +80,13 @@ func (p *Poller) PollOnce() PollResult {
 	if p.client == nil {
 		if p.factory == nil {
 			res.Err = errors.New("poller: client is nil and no factory provided")
+			p.recordFailure(res.Err)
 			return res
 		}
 		c, err := p.factory()
 		if err != nil {
 			res.Err = err
+			p.recordFailure(err)
 			return res
 		}
 		p.client = c
@@ -92,6 +101,7 @@ func (p *Poller) PollOnce() PollResult {
 			if err != nil {
 				p.maybeInvalidateClient(err)
 				res.Err = err
+				p.recordFailure(err)
 				return res
 			}
 			blocks = append(blocks, BlockResult{
@@ -103,6 +113,7 @@ func (p *Poller) PollOnce() PollResult {
 			if err != nil {
 				p.maybeInvalidateClient(err)
 				res.Err = err
+				p.recordFailure(err)
 				return res
 			}
 			blocks = append(blocks, BlockResult{
@@ -114,6 +125,7 @@ func (p *Poller) PollOnce() PollResult {
 			if err != nil {
 				p.maybeInvalidateClient(err)
 				res.Err = err
+				p.recordFailure(err)
 				return res
 			}
 			blocks = append(blocks, BlockResult{
@@ -125,6 +137,7 @@ func (p *Poller) PollOnce() PollResult {
 			if err != nil {
 				p.maybeInvalidateClient(err)
 				res.Err = err
+				p.recordFailure(err)
 				return res
 			}
 			blocks = append(blocks, BlockResult{
@@ -133,13 +146,50 @@ func (p *Poller) PollOnce() PollResult {
 
 		default:
 			res.Err = errors.New("poller: unsupported function code")
+			p.recordFailure(res.Err)
 			return res
 		}
 	}
 
 	// Commit only if all reads succeeded
 	res.Blocks = blocks
+
+	// Successful cycle
+	p.recordSuccess()
+
 	return res
+}
+
+// recordSuccess updates counters for a successful poll cycle.
+func (p *Poller) recordSuccess() {
+	p.counters.ResponsesValidTotal++
+	p.counters.ConsecutiveFailCurr = 0
+}
+
+// recordFailure updates counters for a failed poll cycle.
+func (p *Poller) recordFailure(err error) {
+	if err == nil {
+		return
+	}
+
+	// Classify timeout separately
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		p.counters.TimeoutsTotal++
+	} else {
+		p.counters.TransportErrorsTotal++
+	}
+
+	p.counters.ConsecutiveFailCurr++
+
+	if p.counters.ConsecutiveFailCurr > p.counters.ConsecutiveFailMax {
+		p.counters.ConsecutiveFailMax = p.counters.ConsecutiveFailCurr
+	}
+}
+
+// Counters returns a snapshot copy of the transport counters.
+func (p *Poller) Counters() TransportCounters {
+	return p.counters
 }
 
 // maybeInvalidateClient discards the current client only when the error indicates
@@ -166,8 +216,6 @@ func (p *Poller) maybeInvalidateClient(err error) {
 // isDeadConnErr is a conservative classifier for transport-death errors.
 // If it returns true, reusing the same client is very likely to fail forever.
 func isDeadConnErr(err error) bool {
-	// First: if it is a net.Error timeout, do NOT automatically mark dead.
-	// Timeouts can be transient.
 	var ne net.Error
 	if errors.As(err, &ne) && ne.Timeout() {
 		return false
@@ -175,7 +223,6 @@ func isDeadConnErr(err error) bool {
 
 	s := strings.ToLower(err.Error())
 
-	// Cross-platform dead-transport markers.
 	if strings.Contains(s, "eof") {
 		return true
 	}
@@ -191,10 +238,6 @@ func isDeadConnErr(err error) bool {
 	if strings.Contains(s, "use of closed network connection") {
 		return true
 	}
-
-	// Windows-specific: this is your exact error class.
-	// Example:
-	// "wsasend: an existing connection was forcibly closed by the remote host."
 	if strings.Contains(s, "forcibly closed by the remote host") {
 		return true
 	}
