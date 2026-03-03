@@ -1,4 +1,8 @@
-# Device Status Block --- Layout Specification (AUTHORITATIVE)
+# Device Status Block --- Layout Specification
+
+Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+
+Authority Note: This document defines the authoritative specification for externally observable behavior.
 
 Status: LOCKED\
 Scope: Modbus Replicator + MMA\
@@ -42,6 +46,12 @@ These slots represent device-level operational condition only.
 2 → ERROR\
 3 → STALE\
 4 → DISABLED
+
+Emission behavior in current runtime:
+
+-   UNKNOWN appears on initial status snapshot assertion\
+-   OK and ERROR are assigned during poll processing\
+-   STALE and DISABLED are defined values but not currently assigned by runtime flow
 
 ------------------------------------------------------------------------
 
@@ -119,10 +129,10 @@ Slot 29 → consecutive_fail_max (uint16)
 
 # 4. Write Strategy
 
-Full block write (Slots 0--29) occurs only:
+Full block write (Slots 0--29) occurs when `needFull` is true:
 
 -   On replicator startup\
--   After a failed write when the next write succeeds
+-   After status write failure (re-assert path)
 
 Incremental updates:
 
@@ -130,6 +140,8 @@ Incremental updates:
 -   Slot 1 → on error change\
 -   Slot 2 → once per second while in error\
 -   Slots 20--29 → updated when their values change
+
+Device name (Slots 3--10) is written in full-block path only.
 
 The full block must not be rewritten continuously.
 

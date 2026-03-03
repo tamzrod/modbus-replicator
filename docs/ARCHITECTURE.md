@@ -1,14 +1,16 @@
 # Modbus Replicator – Architecture
 
+Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+
 ## Overview
 
-The Modbus Replicator is a **read–fan-out–write** system designed to decouple unstable field devices from consumers by inserting a deterministic, memory-centric buffer (MMA – Modbus Memory Appliance) between them.
+The Modbus Replicator is a **read–fan-out–write** system that reads source devices and delivers snapshots to MMA memory.
 
-The core architectural rule is simple:
+Core rule:
 
 > **The source device is the truth. The writer is the delivery mechanism. Memory is the contract.**
 
-The replicator never invents data, never probes devices independently, and never hides failures behind metadata.
+Implementation does not add semantic interpretation of source telemetry and does not perform hidden retries.
 
 ---
 
@@ -19,7 +21,7 @@ The replicator never invents data, never probes devices independently, and never
         ↓
       Poller
         ↓
-   PollResult (snapshot)
+   PollResult
         ↓
       Writer
         ↓
@@ -28,7 +30,7 @@ The replicator never invents data, never probes devices independently, and never
    SCADA / Clients
 ```
 
-Each stage has **strict responsibility boundaries**.
+When status is enabled, the same runtime also maintains a per-unit status snapshot and writes it through per-target status writers.
 
 ---
 
@@ -36,120 +38,73 @@ Each stage has **strict responsibility boundaries**.
 
 ### 1. Poller
 
-**Responsibility:** Read devices.
+**Responsibility:** read device blocks and expose transport counters.
 
-* Executes Modbus reads against source devices
-* Produces a `PollResult`
-* Owns *device truth*
+Poller behavior as implemented:
 
-What the poller knows:
-
-* Read success or failure
-* Raw register / bit data
-
-What the poller does **not** do:
-
-* Write memory
-* Maintain device state across cycles
-* Interpret semantics
-
-If a poll fails, it is reported as `PollResult.Err` **exactly as returned by the Modbus transport / protocol layer**.
-
----
+* Executes configured FC1/FC2/FC3/FC4 reads in sequence per poll cycle.
+* Returns success only when all read blocks succeed in that cycle.
+* On error, returns immediately with `PollResult.Err`.
+* Performs no retry loop inside `PollOnce()`.
+* Maintains lifetime transport counters (`requests_total`, `responses_valid_total`, `timeouts_total`, `transport_errors_total`, `consecutive_fail_current`, `consecutive_fail_max`).
 
 ### 2. Writer
 
-**Responsibility:** Deliver data to memory.
+**Responsibility:** deliver data and status packets to configured targets.
 
-The writer consumes a `PollResult` and pushes **data** into MMA using the Raw Ingest protocol.
+Writer behavior as implemented:
 
-> **A poll failure is not a writer failure.**
+* Data writes execute only when `PollResult.Err == nil`.
+* Status writes are independent of data success/failure.
+* Status destination is **per target** (`target.endpoint`, `target.status_unit_id`) when `source.status_slot` is configured.
 
-Writer behavior:
+### 3. Status Snapshot Orchestration
 
-* Writes data blocks **only when `PollResult.Err == nil`**
-* Writes device status blocks independently
-* Returns errors **only** for delivery failures (network, protocol, wiring)
+Runtime status snapshot is owned by the per-unit orchestrator loop.
 
-The writer never retries reads and never evaluates device health beyond what the poller reported.
+Implemented transitions:
 
----
-
-### 3. Device Status Block
-
-Device status is treated as **data**, not metadata.
-
-* Written through the **same writer**
-* Uses the **same Raw Ingest protocol**
-* Stored in a **dedicated address space**
-
-This avoids side-channels, probes, and implicit health logic.
-
-#### Status Is Opt-In
-
-A device participates in status reporting only when `status_slot` is configured.
-
-If status is not configured:
-
-* No status writes occur
-* No memory is reserved
+* On poll success: `Health=OK`, `LastErrorCode=0`, `SecondsInError=0`.
+* On poll failure: `Health=ERROR`, `LastErrorCode=errorCode(PollResult.Err)`.
+* Every second while `Health != OK`: increment `SecondsInError` by 1 up to 65535.
+* On each poll result: inject latest transport counters from the poller into status snapshot.
 
 ---
 
-### 4. Status Data Model (Current Stage)
+## Status Data Model (Implemented)
 
-At the current stage, the writer emits **exactly three fields** per device:
+Each status-enabled unit owns exactly **30 slots** per configured `status_slot` base.
 
-| Slot | Field            | Meaning                                   |
-| ---: | ---------------- | ----------------------------------------- |
-|    0 | Health           | `OK` or `ERROR` only                      |
-|    1 | Last Error Code  | **Raw Modbus exception / transport code** |
-|    2 | Seconds-In-Error | Maintained by runner/state layer          |
+* Slots 0–2: operational truth (`health_code`, `last_error_code`, `seconds_in_error`)
+* Slots 3–10: `device_name` (8 registers / 16 ASCII chars max)
+* Slots 11–19: reserved
+* Slots 20–29: transport lifetime counters
 
-#### Critical Rules
+Health constants defined in code:
 
-* **Health (slot 0)** is the *only interpreted field*
-* **Last Error Code (slot 1)** is a **verbatim numeric code**, not a string
-* No decoding, re-encoding, or string mapping is performed
-* No ASCII, blobs, or variable-length data
+* `0` Unknown
+* `1` OK
+* `2` Error
+* `3` Stale
+* `4` Disabled
 
-This preserves the **truth layer** and avoids semantic corruption.
+Current emission behavior:
 
----
-
-## Memory Model
-
-### Why Memory Is Central
-
-MMA acts as:
-
-* A shock absorber
-* A deterministic contract
-* A single source for consumers
-
-Memory semantics:
-
-* Writes are atomic
-* Addressing is explicit
-* No implicit scaling or parsing
-
-Consumers trust memory **only because the writer is honest**.
+* Runtime assigns `HealthOK (1)` and `HealthError (2)` during poll operation.
+* `HealthUnknown (0)` is used for initial snapshot before first status write.
+* `HealthStale (3)` and `HealthDisabled (4)` are defined constants but are not assigned by current runtime flow.
 
 ---
 
 ## Raw Ingest Protocol
 
-The Raw Ingest protocol is:
+Raw Ingest packet format is fixed in implementation (`internal/writer/ingest/client.go`):
 
-* Stateless
-* One packet = one connection
-* Locked in format
-
-Because status uses the same protocol:
-
-* No protocol changes were required
-* No version drift occurred
-* Status remains forward-compatible
+* Magic bytes `RI` (`0x52`, `0x49`)
+* Version `0x01`
+* Header size `10` bytes
+* Big-endian register payload encoding
+* One TCP connection per packet write
 
 ---
 
@@ -158,59 +113,25 @@ Because status uses the same protocol:
 | Layer  | Owns Errors About                      |
 | ------ | -------------------------------------- |
 | Poller | Device reachability, Modbus exceptions |
-| Writer | Delivery failures, protocol errors     |
-| MMA    | Memory integrity                       |
-
-This separation prevents:
-
-* Double reporting
-* False health signals
-* Hidden failure modes
+| Writer | Delivery failures, protocol write path |
+| MMA    | Memory integrity and destination bounds |
 
 ---
 
-## Design Principles (Non-Negotiable)
+## Design Principles (Implemented)
 
 * **Status is data**
 * **Memory is the contract**
-* **Writers do not interpret truth**
-* **Pollers do not mutate state**
-* **No background probes**
-* **No hidden retries**
-
-Every failure must be attributable to exactly one layer.
-
----
-
-## Current State
-
-Implemented:
-
-* Poller
-* Writer
-* Status block wiring
-* Config validation and normalization
-* Deterministic memory writes
-
-Pending (Next Stages):
-
-* Runner/state (seconds-in-error)
-* Saturation rules
-* Identity re-assertion after failure
+* **No hidden retries in poll cycle**
+* **No background probes in runtime**
+* **Per-target status destinations when status is enabled**
 
 ---
 
 ## Summary
 
-The Modbus Replicator is intentionally boring.
+The current implementation is deterministic and explicit:
 
-Its power comes from:
-
-* Explicit boundaries
-* Honest failure reporting
-* Memory-first design
-
-Nothing is hidden.
-Nothing is guessed.
-
-That is what makes it reliable.
+* All externally observable status behavior is carried through the same write channel.
+* Status memory topology is per target.
+* 30-slot status model is implemented and active.

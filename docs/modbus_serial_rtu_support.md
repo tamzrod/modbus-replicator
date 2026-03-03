@@ -1,191 +1,138 @@
-# Modbus Serial (RTU) Support — Scope & Rules
+# Modbus Serial (RTU) Support — Design Contract (Not Active)
 
-> **Purpose**  
-> Define how **Modbus RTU (serial)** is supported by the Replicator without violating core architecture principles.
+Version Note: 2026-03-03 (Governance status correction)
 
-This document is **normative**.
+## Status
 
----
+**DESIGN LOCKED — NOT IMPLEMENTED**
 
-## Core Statement (Locked)
+Serial RTU source support is **not supported in the current runtime**.
+Current active runtime paths implement Modbus TCP source behavior only.
 
-> **Modbus RTU is only a transport.**  
-> **It must not change memory layout, slot model, or system behavior.**
-
-If RTU introduces semantics, policy, or intelligence, the design is wrong.
+This document is a **future design contract** and is **non-normative until activation**.
+It defines implementation boundaries that must be followed if RTU is activated in a future release.
 
 ---
 
-## Responsibility Boundary
+## Purpose
 
-### Replicator
+Define the future RTU integration boundary without changing current behavior.
 
-The Replicator:
+This document exists to ensure any future RTU implementation:
 
-- Supports Modbus RTU as a **source transport only**
-- Treats RTU exactly the same as Modbus TCP
-- Produces the same raw outcomes:
-  - reply code
-  - error duration
-  - online flag
-  - device name
-
-The Replicator does **not**:
-
-- Perform protocol translation
-- Implement control logic
-- Add retries beyond poll cadence
-- Infer line quality or health
-- Discover devices
+- remains transport-only,
+- preserves existing externally observable contracts,
+- and does not introduce semantic drift.
 
 ---
 
-### MMA (Modbus Memory Appliance)
+## Design Boundary (Future Contract)
 
-The MMA:
+### Core Rule
 
-- Is unaware of transport type
-- Receives the same writes regardless of TCP or RTU
-- Enforces bounds and memory allocation
+> **RTU is transport only.**
+> **It must not change memory layout, slot model, status model, packet contract, or runtime semantics.**
 
-Transport choice must be invisible to MMA.
+Transport complexity must never leak upward.
 
----
+### No Semantic Leakage
 
-## Supported Serial Mode
+A future RTU source path must not:
 
-- Modbus RTU (binary)
-- RS-485 / RS-232
-
-Explicitly **not supported**:
-
-- Modbus ASCII
-- Vendor-specific serial protocols
-- Multi-master arbitration
+- redefine device truth semantics,
+- alter status slot meanings,
+- alter Raw Ingest packet format,
+- add transport-specific control logic,
+- add retries beyond existing poll cadence policy.
 
 ---
 
-## Serial Configuration (YAML)
+## Non-Activation Statement
 
-RTU configuration is mutually exclusive with TCP configuration.
+The following are **not active capabilities** today:
 
-```yaml
-source:
-  serial:
-    device: "/dev/ttyUSB0"
-    baudrate: 9600
-    databits: 8
-    parity: "N"
-    stopbits: 1
-    timeout_ms: 2000
-  unit_id: 1
-```
+- serial device polling,
+- RTU source configuration in active runtime,
+- RTU production transport path.
 
-Rules:
-
-- Exactly one source type per unit
-- No auto-detection
-- No guessed defaults
-- Invalid config fails fast at startup
+Any references below are design constraints for future activation only.
 
 ---
 
-## Timing & Determinism
+## Future Activation Contract
 
-- Poll interval remains authoritative
-- RTU silent interval must be respected
-- One serial port = one poll loop
-- No parallel access to the same serial device
+If RTU is implemented in a future release, it must satisfy all conditions below.
 
-The Replicator must not:
+### 1) Contract Preservation
 
-- Flood the bus
-- Guess frame boundaries
-- Hide timing violations
+- Keep the same externally observable behavior as TCP source mode.
+- Preserve current status model boundaries.
+- Preserve current per-target routing model.
+- Preserve current no-retry behavior model.
 
----
+### 2) Transport Equivalence
 
-## Reply Code Handling (Unchanged)
+- Treat RTU as an alternate source transport only.
+- Keep source acquisition outputs equivalent in meaning to TCP acquisition outputs.
+- Keep transport differences internal to source acquisition.
 
-RTU uses the **same reply code contract** as TCP:
+### 3) Deterministic Runtime
 
-- `0` → valid response
-- Modbus exception → raw exception code
-- Transport / timeout failure → fixed failure code (e.g. `255`)
+- Respect configured polling cadence.
+- Respect RTU framing/timing requirements without changing orchestrator semantics.
+- Preserve deterministic poll cycle behavior (single-cycle outcome, explicit error propagation).
 
-No RTU-specific interpretation is allowed.
+### 4) No Architecture Drift
 
----
-
-## Error Duration & Online Flag
-
-- `error_seconds` increments while reply code != 0
-- Resets when reply code == 0
-- `online_flag = 1` when reply code == 0
-- `online_flag = 0` when reply code != 0
-
-Identical behavior across all transports.
+- Do not move semantic ownership from existing layers.
+- Do not add hidden policy in transport adapters.
+- Do not bypass existing validation and status pathways.
 
 ---
 
-## Slot & Memory Discipline
+## Activation Checklist (Must Be Completed Before Declaring RTU Active)
 
-- RTU devices map to **device slots** exactly like TCP devices
-- Slot index comes from YAML
-- Slot size is fixed
-- Input Registers only
+1. Implementation exists in active runtime paths.
+2. Configuration schema explicitly and unambiguously supports RTU source mode.
+3. Validation rules cover RTU source configuration errors.
+4. Polling behavior under RTU preserves deterministic contract boundaries.
+5. Status behavior remains aligned with existing status documentation.
+6. Raw Ingest packet behavior remains unchanged.
+7. Documentation authority set is updated concurrently to reflect activation.
+8. Alignment verification confirms no contradiction with governing docs.
 
-Transport must never affect slot layout.
-
----
-
-## Deployment Models
-
-### Bare Metal / VM
-
-- Replicator opens serial device directly
-- Only requirement is OS-level permissions
-- One process owns the serial port
-
-### Docker
-
-- Serial device must be passed explicitly:
-
-```bash
-docker run --device=/dev/ttyUSB0 rodtamin/modbus-replicator
-```
-
-- No `--privileged`
-- No mounting `/dev`
+Until all checklist items are complete, RTU remains **NOT IMPLEMENTED**.
 
 ---
 
-## Failure Behavior
+## Determinism Requirements (Future RTU Path)
 
-- On serial open failure: fail fast
-- On poll failure: update device slot on next cycle
-- No reconnect storms
-- Silence is a valid state
+A future RTU implementation must preserve:
 
----
+- explicit timeout handling,
+- explicit error propagation,
+- no hidden retries,
+- no speculative reads,
+- no transport-derived semantic overrides.
 
-## Explicit Non-Goals (DO NOT ADD)
-
-- Auto baud detection
-- Line quality metrics
-- Signal strength
-- Address scanning
-- Device discovery
-- Multi-drop orchestration
-- RTU metadata
-
-All of the above belong outside the Replicator.
+RTU timing mechanics are internal transport concerns and must not alter external contract semantics.
 
 ---
 
-## Final Locked Statement
+## Excluded Scope
 
-> **Modbus RTU is just another wire.**  
-> **Truth, slots, and memory do not care how bytes arrived.**  
-> **Transport complexity must never leak upward.**
+This document does not authorize:
+
+- adding RTU features to current runtime,
+- changing current implementation behavior,
+- redefining existing architecture authority,
+- introducing partial or implied RTU support claims.
+
+---
+
+## Final Statement
+
+RTU support is currently inactive by design.
+This document defines the locked future boundary for activation work.
+Transport complexity must never leak upward.
 

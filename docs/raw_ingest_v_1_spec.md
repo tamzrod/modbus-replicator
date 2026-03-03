@@ -1,8 +1,12 @@
 # Raw Ingest v1 – Locked Specification (MMA2)
 
+Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+
 **Status:** LOCKED / WORKING
 **Validated Against:** Node-RED sender + Go replicator + MMA2 appliance
 **Last verified:** 2026-01-31
+
+Authority Note: This document defines the authoritative specification for externally observable behavior.
 
 ---
 
@@ -16,7 +20,7 @@ This document exists to:
 
 * Prevent silent protocol drift
 * Prevent “helpful” extensions
-* Serve as the executable contract between sender and MMA
+* Serve as a locked contract reference between sender and MMA
 
 ---
 
@@ -122,7 +126,7 @@ There is:
 
 ---
 
-## Reference Implementations (Authoritative)
+## Reference Implementations
 
 * Node-RED function sender
 * Go replicator: `internal/writer/ingest/client.go`

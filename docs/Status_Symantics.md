@@ -1,159 +1,118 @@
 # Device Status Semantics
 
-This document defines the **authoritative meaning** of device status in Modbus Replicator.
+Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
 
-It intentionally covers **semantics only**.
-No implementation details.
-No optimizations.
-No future features.
-
-If it is not written here, it does not exist.
+This document defines implemented status semantics and externally observable status behavior.
 
 ---
 
 ## Core Rule
 
-> **Status reflects the outcome of the most recent poll cycle.**
+> **Status reflects the latest poll outcome plus runtime-maintained status counters.**
 
-Status is **not** a prediction, a trend, or an interpretation.
-It is a factual statement about the last attempt to read the device.
+Status includes both immediate poll truth (health/error code) and continuous runtime state (`seconds_in_error`, transport counters).
 
 ---
 
 ## Status Is Data
 
-Status is treated exactly like any other data block:
+Status is written through the same write path as data:
 
-* Written by the writer
-* Delivered via the Raw Ingest protocol
-* Stored in Modbus Memory (MMA)
-* Read by clients like any other register
+* Writer sends status as Raw Ingest writes.
+* MMA stores status in register memory.
+* Consumers read status as standard Modbus memory.
 
-There are:
-
-* no side channels
-* no heartbeats
-* no probes
-* no hidden state
+No separate probe channel is used.
 
 ---
 
 ## Health Code
 
-The health code is a **binary state**.
+Health constants defined in status model:
 
-| Value | Meaning                                     |
-| ----: | ------------------------------------------- |
-|    OK | The most recent poll completed successfully |
-| ERROR | The most recent poll failed                 |
+| Value | Symbol     | Meaning |
+| ----: | ---------- | ------- |
+| 0     | UNKNOWN    | Initial/unknown state constant |
+| 1     | OK         | Most recent poll succeeded |
+| 2     | ERROR      | Most recent poll failed |
+| 3     | STALE      | Defined constant (not emitted by current runtime flow) |
+| 4     | DISABLED   | Defined constant (not emitted by current runtime flow) |
 
-There are no intermediate states.
+Current runtime assignment behavior:
 
----
-
-## What Constitutes a Poll Failure
-
-A poll is considered **failed** if **any** of the following occur:
-
-* Modbus exception response
-* TCP connection failure
-* Timeout
-* Protocol error
-* Any non-nil `PollResult.Err`
-
-No distinction is made at this layer.
-
-Failure is failure.
+* Poll success sets `OK`.
+* Poll failure sets `ERROR`.
+* Initial snapshot starts as `UNKNOWN` before first write.
 
 ---
 
-## Error Code
+## Poll Failure Semantics
 
-The error code field represents the **raw error condition** observed during the poll.
+A poll cycle is failed when `PollResult.Err != nil`.
 
-Rules:
-
-* The error code is written **as-is**
-* No parsing
-* No classification
-* No mapping
-* No normalization
-
-At this stage, the value is:
-
-* `0` → no error
-* non-zero → error occurred
-
-The exact meaning of non-zero values is **intentionally undefined** here.
+This includes Modbus exceptions, transport failures, protocol-level failures, and other poller errors.
 
 ---
 
-## Writer Responsibilities
+## Error Code Semantics
 
-The writer:
+`last_error_code` behavior:
 
-* writes **OK** when `PollResult.Err == nil`
-* writes **ERROR** when `PollResult.Err != nil`
-* writes the associated error code
-* does **not** retry reads
-* does **not** interpret errors
+* `0` on successful poll
+* On failed poll, code is extracted from error interfaces in this order:
+	1. `Code() uint16`
+	2. `ErrorCode() uint16`
+	3. `ModbusCode() uint16`
+* Fallback value `1` when no supported error-code interface is present
 
-A poll failure is **not** a writer failure.
-
----
-
-## What This Layer Does NOT Do
-
-Explicit non-goals:
-
-* No retry logic
-* No backoff
-* No time accumulation
-* No error counting
-* No severity levels
-* No vendor-specific decoding
-
-All of the above belong to higher layers.
+No string mapping is performed.
 
 ---
 
-## Relationship to Future State Logic
+## Time Accumulation Semantics
 
-Future runner/state logic may:
+`seconds_in_error` is a runtime-maintained saturating `uint16` counter.
 
-* accumulate seconds-in-error
-* saturate counters
-* derive quality flags
+Implemented rules:
 
-Those features:
-
-* must consume this status data
-* must not redefine it
-
-This document remains the source of truth.
+* Every second while `Health != OK`, increment by `1`.
+* On poll success, reset to `0`.
+* Clamp at `65535` (no wrap).
 
 ---
 
-## Design Rationale
+## Transport Counter Semantics
 
-This model was chosen to ensure:
+Status includes transport lifetime counters in slots 20–29.
 
-* deterministic behavior
-* honest failure reporting
-* zero ambiguity
-* zero hidden logic
+Source of values:
 
-The system must be boring before it can be smart.
+* Poller mutates counters per poll cycle.
+* Orchestrator injects latest poller counters into status snapshot on each poll result.
+* Status writer emits changed counter fields.
+
+These counters are instrumentation and do not change poll logic.
+
+---
+
+## Non-Goals
+
+Implemented non-goals:
+
+* No retry loop inside poll cycle
+* No vendor-specific semantic decoding
+* No hidden quality scoring
+* No synthetic status derived from side channels
 
 ---
 
 ## Summary
 
-* Status answers one question only:
+Status combines:
 
-> **Did the last poll succeed?**
+* poll result truth,
+* raw error code extraction contract,
+* 1 Hz error-duration accumulation,
+* transport lifetime counters.
 
-Nothing more.
-Nothing less.
-
-Everything else builds on top of this.
+This is the implemented behavior exposed to external consumers.

@@ -1,5 +1,7 @@
 # Device Status — Limits & Responsibility Boundary
 
+Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+
 > **Purpose**
 > Clarify *where limits actually live* for device status slots, and prevent artificial limits from being introduced in the Replicator.
 
@@ -65,14 +67,14 @@ All choices are **explicit and physical**.
 
 ## Slot Model Recap
 
-* One slot = one device
-* Slot size = **20 registers**
+* One status slot index = one device block
+* Block size = **30 registers (slots)**
 * Slot index is logical, not physical
 
 Maximum device count is therefore:
 
 ```
-max_devices = floor(total_registers / 20)
+max_devices = floor(total_registers / 30)
 ```
 
 This value is **derived**, never configured.

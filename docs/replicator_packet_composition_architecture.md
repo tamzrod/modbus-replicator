@@ -1,8 +1,10 @@
 # Replicator Packet Composition Architecture
 
+Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+
 ## Status
 
-**Authoritative — REQUIRED before further replicator changes**
+**Informational architecture reference aligned to documentation-governed authority**
 
 This document defines the **replicator-side packet composition architecture** used to generate packets consumed by **MMA2.0 Raw Ingest v1**.
 
@@ -18,7 +20,7 @@ The Modbus Replicator is responsible for:
 2. Composing packets that conform **exactly** to the existing MMA2.0 Raw Ingest v1 packet format
 3. Transmitting those packets reliably
 
-This document exists to **lock the internal replicator architecture** so that:
+This document describes current packet composition boundaries so that:
 
 * Packet composition has a single authority
 * Future packet evolution is localized
@@ -89,7 +91,6 @@ Owns:
 
 * Modbus polling
 * Device timeouts
-* Retry logic
 * Raw register / bit data
 * Error surfaces from Modbus
 
@@ -165,7 +166,7 @@ The replicator packet **must exactly match** the MMA2.0 Raw Ingest v1 header:
 
 Header size: **10 bytes**
 
-This table is **reference only**. Code remains authoritative.
+This table reflects the authoritative Raw Ingest v1 specification and must match the locked wire contract.
 
 ---
 

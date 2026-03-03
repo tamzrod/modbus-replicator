@@ -1,5 +1,9 @@
 # Modbus Replicator — Configuration Model
 
+Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+
+LEGACY NOTICE: This document previously defined a global `replicator.Status_Memory` model. That topology is removed from implementation and is retained here only as historical context. The normative model below reflects current code.
+
 ## Purpose
 
 Configuration defines **replication topology at startup**.
@@ -11,53 +15,43 @@ It answers only:
 * Where data is written
 * Where (optionally) status is written
 
-> **Configuration does not define behavior. It defines wiring.**
-
-The replicator is configured **once** at process start.
-Any change requires a restart.
+> **Configuration defines wiring. Runtime defines behavior.**
 
 ---
 
-## Core Principles (Still Non‑Negotiable)
+## Core Principles
 
-* No runtime mutation
-* No semantics
-* No control logic
-* No routing decisions
-* No retries
-
-Configuration describes **topology only**.
+* No runtime mutation of config
+* No semantic interpretation rules in config
+* No retry policy in config
+* Topology only
 
 ---
 
-## High‑Level Structure
+## High-Level Structure (Implemented)
 
 ```yaml
 replicator:
-  Status_Memory:
-    endpoint: "10.5.1.20:501"
-    # unit_id is supplied per unit via status_slot
-
   units:
     - id: "unit-1"
       source:
         endpoint: "10.5.1.101:502"
         unit_id: 1
+        timeout_ms: 2000
         device_name: "SCB01"
         status_slot: 1
-        timeout_ms: 2000
-
       reads:
         - fc: 3
           address: 0
           quantity: 50
-
       targets:
         - id: 1
           endpoint: "10.5.1.20:501"
+          unit_id: 2
+          status_unit_id: 35
           memories:
-            - offsets: {}
-
+            - memory_id: 1
+              offsets: {}
       poll:
         interval_ms: 1000
 ```
@@ -70,54 +64,20 @@ replicator:
 replicator:
 ```
 
-Top‑level container for all replication wiring.
-
----
-
-## Status Memory (Optional but Global)
-
-```yaml
-Status_Memory:
-  endpoint: "10.5.1.20:501"
-```
-
-Defines **where device status blocks are written**.
-
-Important rules:
-
-* Status memory is **shared** across all units
-* Unit ID for status is **not global**
-* Each device selects its status block via `status_slot`
-
-If `Status_Memory` is omitted:
-
-* No status writers are created
-* Status logic is completely disabled
+Top-level container for all unit pipelines.
 
 ---
 
 ## Units
 
-Each entry under `units` defines **one replication pipeline**.
-
-Units are:
-
-* Independent
-* One‑way
-* Deterministic
-
-There is **no fan‑in** and no cross‑unit interaction.
+Each `units[]` entry defines one pipeline.
 
 ```yaml
 units:
   - id: "unit-1"
 ```
 
-The `id` is:
-
-* Human‑readable
-* Used only for logging and diagnostics
-* Never written to memory
+`id` is runtime identity for logging/diagnostics.
 
 ---
 
@@ -132,24 +92,19 @@ source:
   status_slot: 1
 ```
 
-Defines the **truth device**.
-
 Fields:
 
-* `endpoint` — Modbus TCP endpoint of the source device
-* `unit_id` — Modbus Unit ID
-* `timeout_ms` — Transport timeout
-* `device_name` — Optional, written verbatim into status memory
-* `status_slot` — Optional; enables status reporting
+* `endpoint` (`string`)
+* `unit_id` (`uint8`)
+* `timeout_ms` (`int`)
+* `device_name` (`string`, optional, ASCII-only validation)
+* `status_slot` (`*uint16`, optional, opt-in status)
 
-If `status_slot` is omitted:
-
-* Device has **no status block**
-* No status writes occur
+If `status_slot` is omitted, no status writers are built for that unit.
 
 ---
 
-## Reads (Geometry Only)
+## Reads
 
 ```yaml
 reads:
@@ -158,16 +113,7 @@ reads:
     quantity: 50
 ```
 
-Defines **what is read** from the source device.
-
-Rules:
-
-* Geometry only
-* No scaling
-* No interpretation
-* No transformation
-
-Reads are executed sequentially per poll cycle.
+Geometry-only read definitions per poll cycle.
 
 ---
 
@@ -177,30 +123,26 @@ Reads are executed sequentially per poll cycle.
 targets:
   - id: 1
     endpoint: "10.5.1.20:501"
+    unit_id: 2
+    status_unit_id: 35
     memories:
-      - offsets: {}
+      - memory_id: 1
+        offsets: {}
 ```
 
-Defines **where data is written**.
+Implemented fields:
 
-Rules:
+* `id` (`uint32`)
+* `endpoint` (`string`)
+* `unit_id` (`uint8`) for data writes
+* `status_unit_id` (`*uint8`) for status writes when source status is enabled
+* `memories[]` with `memory_id` (`uint16`) and `offsets` (`map[int]uint16`)
 
-* Targets are write‑only
-* Writes occur **only when poll succeeds**
-* One poll result may fan‑out to multiple targets
+### Per-target status destination
 
-### Memory Mapping
+Status destination identity is `(target.endpoint, target.status_unit_id)`.
 
-```yaml
-offsets: {}
-```
-
-An empty map means:
-
-* Identity mapping
-* Register addresses preserved
-
-Offsets exist only to shift address space, not to transform values.
+There is no global status memory object in current config schema.
 
 ---
 
@@ -211,43 +153,30 @@ poll:
   interval_ms: 1000
 ```
 
-Defines poll cadence.
-
-Rules:
-
-* Fixed interval
-* No jitter logic
-* No adaptive timing
-
-Timing behavior belongs to the runner, not the config.
+Fixed cadence for poll execution.
 
 ---
 
-## What Configuration Does *Not* Do
+## Validation Rules (Implemented)
 
-Configuration does **not**:
+When `source.status_slot` is set:
 
-* Define health semantics
-* Encode error meaning
-* Specify retry logic
-* Describe failover
-* Contain business rules
+* Unit must have at least one target.
+* Every target must define `status_unit_id`.
+* Collision is rejected for duplicate `(endpoint, status_unit_id, status_slot)` across units.
 
-Those belong to **runtime state layers**.
+Additional implemented checks:
+
+* `source.device_name` must be ASCII-only.
+* Destination memory overlap is rejected per `(endpoint, memory_id, fc)` range.
 
 ---
 
-## Summary
+## Legacy Model (Removed)
 
-Configuration is intentionally boring.
+Removed from implementation:
 
-It describes:
+* `replicator.Status_Memory`
+* Global shared status endpoint topology
 
-* Devices
-* Wiring
-* Address space
-
-Nothing more.
-Nothing less.
-
-That restraint is what makes large‑scale replication possible without human error.
+Any configuration using `replicator.Status_Memory` is not part of current code contract.

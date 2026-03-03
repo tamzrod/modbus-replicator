@@ -1,89 +1,107 @@
 # Status Rules (Executable Specification)
 
-This document defines the STATUS feature behavior in strict, executable terms.
-Implementation MUST follow this order and these rules exactly.
+Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+
+This document defines implemented STATUS behavior in executable terms.
 
 ---
 
-## 1. RAW ERROR CODE (SOURCE OF TRUTH)
+## 1. RAW ERROR CODE
 
 ### Definition
-- Raw Error Code is copied directly from the Modbus device result.
-- The writer NEVER interprets, maps, or invents error codes.
-- Value is opaque and device-defined.
+
+`last_error_code` is derived from poll failure error value using runtime error-code extraction.
 
 ### Rules
-- On successful Modbus read:
-  - Raw Error Code = 0
-- On Modbus read failure:
-  - Raw Error Code = device-returned error code
-- Writer must only COPY this value.
-- Poller is the ONLY source of this value.
+
+* On successful poll: `last_error_code = 0`
+* On failed poll: extract in this order:
+  1. `Code() uint16`
+  2. `ErrorCode() uint16`
+  3. `ModbusCode() uint16`
+* If none match: `last_error_code = 1`
 
 ---
 
 ## 2. SECONDS IN ERROR
 
 ### Definition
-- Seconds-in-Error is a saturating uint16 counter.
-- It measures continuous time spent in error state.
+
+`seconds_in_error` is a saturating `uint16` duration counter.
 
 ### Rules
-- Increment by 1 every second while Raw Error Code != 0
-- Reset to 0 immediately on first Raw Error Code == 0
-- Saturate at max(uint16)
-- No history, no averaging, no smoothing
+
+* Tick interval: 1 second.
+* While `health != OK`, increment by 1 each tick.
+* On poll success, reset to 0.
+* Saturate at `65535`.
 
 ---
 
-## 3. HEALTH (DERIVED STATE)
+## 3. HEALTH STATE
 
 ### Definition
-- Health is a derived classification based on error state.
-- Health has NO independent state.
+
+Health values are encoded as numeric enum constants.
 
 ### Rules
-- If Raw Error Code == 0:
-  - Health = OK
-- If Raw Error Code != 0:
-  - Health = ERROR
-- Health MUST NOT be set directly
-- Health MUST NOT be inferred elsewhere
+
+* Constants defined: `UNKNOWN=0`, `OK=1`, `ERROR=2`, `STALE=3`, `DISABLED=4`.
+* Runtime poll path assigns:
+  * `OK` on poll success
+  * `ERROR` on poll failure
+* `UNKNOWN` is initial snapshot state before first status write.
+* `STALE` and `DISABLED` are currently not assigned by runtime poll/orchestrator flow.
 
 ---
 
 ## 4. DEVICE IDENTITY (DEVICE NAME)
 
 ### Definition
-- Device Name represents identity, not telemetry.
+
+`device_name` is identity data encoded into status slots 3–10.
 
 ### Rules
-- Written ONLY:
-  - On startup
-  - On reconnect
-  - On MMA trust loss
-- NEVER written during normal cycles
-- Silence means identity unchanged and trusted
-- Stored at the END of the status block
+
+* Source value: `source.device_name`.
+* Encoding: ASCII, non-printable replaced with `?`, max 16 chars, packed into 8 registers.
+* Written in full-block writes only.
+* Not emitted in incremental update path.
 
 ---
 
-## 5. SILENCE RULES
+## 5. WRITE STRATEGY
 
 ### Definition
-- Silence is a valid and meaningful state.
+
+Status writer uses two branches: full-block re-assert and incremental updates.
 
 ### Rules
-- No change → no write
-- Fastest update is no update (RBE++)
-- Status writer must not emit unchanged data
+
+* On writer init, `needFull=true` and first write is full block (slots 0–29).
+* On incremental path, only changed fields are written:
+  * slot 0 (`health_code`)
+  * slot 1 (`last_error_code`)
+  * slot 2 (`seconds_in_error`)
+  * slots 20–29 transport counters (as changed)
+* If any incremental write fails, set `needFull=true` and return error.
+* Next successful call with `needFull=true` reasserts full block.
+
+---
+
+## 6. SILENCE RULES
+
+### Rules
+
+* If no tracked field changes, no incremental write is emitted.
+* Status silence is valid runtime behavior.
+* Device name updates are silent until a full-block write condition occurs.
 
 ---
 
 ## NON-RULES (EXPLICITLY FORBIDDEN)
 
-- No retries
-- No error classification
-- No health heuristics
-- No inferred device state
-- No synthetic error codes
+* No poll retry loop inside status logic
+* No error semantic remapping
+* No inferred device state beyond runtime assignments above
+* No synthetic error codes beyond documented fallback value `1`
