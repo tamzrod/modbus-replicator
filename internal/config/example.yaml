@@ -21,18 +21,22 @@ replicator:
         - fc: 1
           address: 0
           quantity: 128
+          interval_ms: 1000
 
         - fc: 2
           address: 0
           quantity: 128
+          interval_ms: 1000
 
         - fc: 3
           address: 0
           quantity: 125
+          interval_ms: 1000
 
         - fc: 4
           address: 0
           quantity: 125
+          interval_ms: 1000
 
       targets:
         - id: 1
@@ -40,9 +44,6 @@ replicator:
           memories:
             - memory_id: 0
               offsets: {}
-
-      poll:
-        interval_ms: 1000
 
     # ------------------------------------------------------------
     # STATUS-DISABLED UNIT
@@ -61,6 +62,7 @@ replicator:
         - fc: 3
           address: 0
           quantity: 64
+          interval_ms: 1000
 
       targets:
         - id: 2
@@ -68,6 +70,3 @@ replicator:
           memories:
             - memory_id: 0
               offsets: {}
-
-      poll:
-        interval_ms: 1000

@@ -34,6 +34,7 @@ replicator:
         - fc: 3
           address: 0
           quantity: 10
+          interval_ms: 1000
       targets:
         - id: 1
           endpoint: "127.0.0.1:1502"
@@ -42,8 +43,6 @@ replicator:
           memories:
             - memory_id: 1
               offsets: {}
-      poll:
-        interval_ms: 1000
 ```
 
 ---

@@ -3,6 +3,7 @@ package poller
 
 import (
 	"errors"
+	"fmt"
 	"net"
 	"strings"
 	"time"
@@ -18,10 +19,10 @@ type Client interface {
 }
 
 // Config is the minimal runtime config the poller needs.
+// Each ReadBlock carries its own Interval; there is no device-level interval.
 type Config struct {
-	UnitID   string
-	Interval time.Duration
-	Reads    []ReadBlock
+	UnitID string
+	Reads  []ReadBlock
 }
 
 // Poller reads from a field device via a Client.
@@ -30,6 +31,8 @@ type Config struct {
 // A future tick may create a new client via factory.
 type Poller struct {
 	cfg Config
+
+	schedules []readSchedule
 
 	client  Client
 	factory func() (Client, error)
@@ -45,30 +48,40 @@ func New(cfg Config, client Client, factory func() (Client, error)) (*Poller, er
 	if cfg.UnitID == "" {
 		return nil, errors.New("poller: unit id required")
 	}
-	if cfg.Interval <= 0 {
-		return nil, errors.New("poller: interval must be > 0")
-	}
 	if len(cfg.Reads) == 0 {
 		return nil, errors.New("poller: at least one read block required")
 	}
+	for i, rb := range cfg.Reads {
+		if rb.Interval <= 0 {
+			return nil, fmt.Errorf("poller: reads[%d].interval must be > 0", i)
+		}
+	}
+
+	now := time.Now()
+	schedules := make([]readSchedule, len(cfg.Reads))
+	for i, rb := range cfg.Reads {
+		schedules[i] = readSchedule{cfg: rb, nextExec: now}
+	}
 
 	return &Poller{
-		cfg:     cfg,
-		client:  client,
-		factory: factory,
+		cfg:       cfg,
+		schedules: schedules,
+		client:    client,
+		factory:   factory,
 	}, nil
 }
 
-// PollOnce performs exactly one poll cycle.
-// All-or-nothing: any failure aborts the cycle.
+// executeSingleRead performs exactly one Modbus read for the given block.
+// It manages client lifecycle and updates transport counters.
 //
+// PollResult semantics: each call produces a result for one read block.
 // Connection policy:
 // - reuse existing client while healthy
 // - if client is nil, try to create once via factory
 // - on a "dead connection" error, discard client (so next tick can recreate)
-func (p *Poller) PollOnce() PollResult {
+func (p *Poller) executeSingleRead(rb ReadBlock) PollResult {
 
-	// Increment request attempt (one per poll cycle)
+	// Increment request attempt (one per read)
 	p.counters.RequestsTotal++
 
 	res := PollResult{
@@ -92,81 +105,70 @@ func (p *Poller) PollOnce() PollResult {
 		p.client = c
 	}
 
-	var blocks []BlockResult
+	var br BlockResult
 
-	for _, rb := range p.cfg.Reads {
-		switch rb.FC {
-		case 1:
-			bits, err := p.client.ReadCoils(rb.Address, rb.Quantity)
-			if err != nil {
-				p.maybeInvalidateClient(err)
-				res.Err = err
-				p.recordFailure(err)
-				return res
-			}
-			blocks = append(blocks, BlockResult{
-				FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Bits: bits,
-			})
-
-		case 2:
-			bits, err := p.client.ReadDiscreteInputs(rb.Address, rb.Quantity)
-			if err != nil {
-				p.maybeInvalidateClient(err)
-				res.Err = err
-				p.recordFailure(err)
-				return res
-			}
-			blocks = append(blocks, BlockResult{
-				FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Bits: bits,
-			})
-
-		case 3:
-			regs, err := p.client.ReadHoldingRegisters(rb.Address, rb.Quantity)
-			if err != nil {
-				p.maybeInvalidateClient(err)
-				res.Err = err
-				p.recordFailure(err)
-				return res
-			}
-			blocks = append(blocks, BlockResult{
-				FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Registers: regs,
-			})
-
-		case 4:
-			regs, err := p.client.ReadInputRegisters(rb.Address, rb.Quantity)
-			if err != nil {
-				p.maybeInvalidateClient(err)
-				res.Err = err
-				p.recordFailure(err)
-				return res
-			}
-			blocks = append(blocks, BlockResult{
-				FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Registers: regs,
-			})
-
-		default:
-			res.Err = errors.New("poller: unsupported function code")
-			p.recordFailure(res.Err)
+	switch rb.FC {
+	case 1:
+		bits, err := p.client.ReadCoils(rb.Address, rb.Quantity)
+		if err != nil {
+			p.maybeInvalidateClient(err)
+			res.Err = err
+			p.recordFailure(err)
 			return res
 		}
+		br = BlockResult{FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Bits: bits}
+
+	case 2:
+		bits, err := p.client.ReadDiscreteInputs(rb.Address, rb.Quantity)
+		if err != nil {
+			p.maybeInvalidateClient(err)
+			res.Err = err
+			p.recordFailure(err)
+			return res
+		}
+		br = BlockResult{FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Bits: bits}
+
+	case 3:
+		regs, err := p.client.ReadHoldingRegisters(rb.Address, rb.Quantity)
+		if err != nil {
+			p.maybeInvalidateClient(err)
+			res.Err = err
+			p.recordFailure(err)
+			return res
+		}
+		br = BlockResult{FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Registers: regs}
+
+	case 4:
+		regs, err := p.client.ReadInputRegisters(rb.Address, rb.Quantity)
+		if err != nil {
+			p.maybeInvalidateClient(err)
+			res.Err = err
+			p.recordFailure(err)
+			return res
+		}
+		br = BlockResult{FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Registers: regs}
+
+	default:
+		res.Err = errors.New("poller: unsupported function code")
+		p.recordFailure(res.Err)
+		return res
 	}
 
-	// Commit only if all reads succeeded
-	res.Blocks = blocks
+	res.Blocks = []BlockResult{br}
 
-	// Successful cycle
+	// Successful read
 	p.recordSuccess()
 
 	return res
 }
 
-// recordSuccess updates counters for a successful poll cycle.
+// recordSuccess updates counters for a successful read.
 func (p *Poller) recordSuccess() {
 	p.counters.ResponsesValidTotal++
 	p.counters.ConsecutiveFailCurr = 0
 }
 
-// recordFailure updates counters for a failed poll cycle.
+// recordFailure updates counters for a failed read.
 func (p *Poller) recordFailure(err error) {
 	if err == nil {
 		return

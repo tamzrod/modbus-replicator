@@ -35,6 +35,25 @@ func Validate(cfg *Config) error {
 			}
 		}
 
+		// Reject legacy device-level poll block.
+		if u.Poll.IntervalMs != 0 {
+			return fmt.Errorf(
+				"unit %q: poll.interval_ms is no longer supported; set interval_ms on each reads[] entry instead",
+				u.ID,
+			)
+		}
+
+		// Each read block must declare its own positive poll interval.
+		for i, r := range u.Reads {
+			if r.IntervalMs <= 0 {
+				return fmt.Errorf(
+					"unit %q: reads[%d].interval_ms must be > 0",
+					u.ID,
+					i,
+				)
+			}
+		}
+
 		// status is opt-in
 		if u.Source.StatusSlot == nil {
 			continue

@@ -1,6 +1,6 @@
 # Modbus Replicator – Architecture
 
-Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+Version Note: 2026-03-11 (Per-read interval refactor; synchronized to implemented behavior)
 
 ## Overview
 
@@ -21,7 +21,7 @@ Implementation does not add semantic interpretation of source telemetry and does
         ↓
       Poller
         ↓
-   PollResult
+    PollResult
         ↓
       Writer
         ↓
@@ -38,14 +38,16 @@ When status is enabled, the same runtime also maintains a per-unit status snapsh
 
 ### 1. Poller
 
-**Responsibility:** read device blocks and expose transport counters.
+**Responsibility:** schedule and execute individual read blocks; expose transport counters.
 
 Poller behavior as implemented:
 
-* Executes configured FC1/FC2/FC3/FC4 reads in sequence per poll cycle.
-* Returns success only when all read blocks succeed in that cycle.
-* On error, returns immediately with `PollResult.Err`.
-* Performs no retry loop inside `PollOnce()`.
+* Each read block (`FC1`/`FC2`/`FC3`/`FC4`) is scheduled independently at its own `interval_ms`.
+* Reads execute sequentially; no two reads run concurrently.
+* Multiple reads due at the same instant are executed in order within the same scheduler loop iteration.
+* On error, the failed read returns immediately with `PollResult.Err`; subsequent reads continue on their own schedule.
+* Performs no retry loop inside `executeSingleRead()`.
+* Each `executeSingleRead()` call produces exactly one `PollResult` containing one `BlockResult`.
 * Maintains lifetime transport counters (`requests_total`, `responses_valid_total`, `timeouts_total`, `transport_errors_total`, `consecutive_fail_current`, `consecutive_fail_max`).
 
 ### 2. Writer
@@ -125,6 +127,7 @@ Raw Ingest packet format is fixed in implementation (`internal/writer/ingest/cli
 * **No hidden retries in poll cycle**
 * **No background probes in runtime**
 * **Per-target status destinations when status is enabled**
+* **Per-read poll scheduling — each read block owns its own cadence**
 
 ---
 
@@ -135,3 +138,4 @@ The current implementation is deterministic and explicit:
 * All externally observable status behavior is carried through the same write channel.
 * Status memory topology is per target.
 * 30-slot status model is implemented and active.
+* Each read block is scheduled independently; different blocks in the same unit may run at different rates.

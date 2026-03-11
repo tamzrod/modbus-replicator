@@ -39,11 +39,13 @@ replicator:
         - fc: 3
           address: 999
           quantity: 30
+          interval_ms: 250
 
         # Energy block
         - fc: 3
           address: 1099
           quantity: 16
+          interval_ms: 5000
 
       targets:
         - id: 1
@@ -54,9 +56,6 @@ replicator:
           memories:
             - memory_id: 1
               offsets: {}
-
-      poll:
-        interval_ms: 1000
 
 
     # ========================================================
@@ -75,11 +74,13 @@ replicator:
         - fc: 3
           address: 999
           quantity: 30
+          interval_ms: 250
 
         # Energy block
         - fc: 3
           address: 1099
           quantity: 16
+          interval_ms: 5000
 
       targets:
         - id: 2
@@ -90,9 +91,6 @@ replicator:
           memories:
             - memory_id: 2
               offsets: {}
-
-      poll:
-        interval_ms: 1000
 
 
     # ========================================================
@@ -111,11 +109,13 @@ replicator:
         - fc: 3
           address: 999
           quantity: 30
+          interval_ms: 250
 
         # Energy block
         - fc: 3
           address: 1099
           quantity: 16
+          interval_ms: 5000
 
       targets:
         - id: 3
@@ -126,6 +126,3 @@ replicator:
           memories:
             - memory_id: 3
               offsets: {}
-
-      poll:
-        interval_ms: 1000
