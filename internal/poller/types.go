@@ -9,6 +9,7 @@ type ReadBlock struct {
 	FC       uint8
 	Address  uint16
 	Quantity uint16
+	Interval time.Duration // per-read poll cadence
 }
 
 // BlockResult is the raw result of a single read.

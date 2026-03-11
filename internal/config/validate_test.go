@@ -9,9 +9,10 @@ func unit(id string, endpoint string, memoryID uint16, fc uint8, addr, qty uint1
 		ID: id,
 		Reads: []ReadConfig{
 			{
-				FC:       fc,
-				Address:  addr,
-				Quantity: qty,
+				FC:         fc,
+				Address:    addr,
+				Quantity:   qty,
+				IntervalMs: 1000,
 			},
 		},
 		Targets: []TargetConfig{
@@ -112,13 +113,91 @@ func TestValidate_OverlapViaOffsetDetected(t *testing.T) {
 	cfg := &Config{
 		Replicator: ReplicatorConfig{
 			Units: []UnitConfig{
-				unit("u1", "ep1", 0, 3, 0, 10, 0),   // 0–9
-				unit("u2", "ep1", 0, 3, 0, 10, 5),  // 5–14 → overlap
+				unit("u1", "ep1", 0, 3, 0, 10, 0),  // 0–9
+				unit("u2", "ep1", 0, 3, 0, 10, 5), // 5–14 → overlap
 			},
 		},
 	}
 
 	if err := Validate(cfg); err == nil {
 		t.Fatalf("expected overlap error, got nil")
+	}
+}
+
+func TestValidate_RejectsLegacyPollBlock(t *testing.T) {
+	cfg := &Config{
+		Replicator: ReplicatorConfig{
+			Units: []UnitConfig{
+				{
+					ID: "u1",
+					Reads: []ReadConfig{
+						{FC: 3, Address: 0, Quantity: 10, IntervalMs: 1000},
+					},
+					Poll: PollConfig{IntervalMs: 1000},
+				},
+			},
+		},
+	}
+
+	if err := Validate(cfg); err == nil {
+		t.Fatalf("expected error for legacy poll block, got nil")
+	}
+}
+
+func TestValidate_RejectsMissingReadInterval(t *testing.T) {
+	cfg := &Config{
+		Replicator: ReplicatorConfig{
+			Units: []UnitConfig{
+				{
+					ID: "u1",
+					Reads: []ReadConfig{
+						{FC: 3, Address: 0, Quantity: 10}, // IntervalMs is 0
+					},
+				},
+			},
+		},
+	}
+
+	if err := Validate(cfg); err == nil {
+		t.Fatalf("expected error for missing read interval, got nil")
+	}
+}
+
+func TestValidate_RejectsZeroReadInterval(t *testing.T) {
+	cfg := &Config{
+		Replicator: ReplicatorConfig{
+			Units: []UnitConfig{
+				{
+					ID: "u1",
+					Reads: []ReadConfig{
+						{FC: 3, Address: 0, Quantity: 10, IntervalMs: 0},
+					},
+				},
+			},
+		},
+	}
+
+	if err := Validate(cfg); err == nil {
+		t.Fatalf("expected error for zero read interval, got nil")
+	}
+}
+
+func TestValidate_AcceptsPerReadIntervals(t *testing.T) {
+	cfg := &Config{
+		Replicator: ReplicatorConfig{
+			Units: []UnitConfig{
+				{
+					ID: "u1",
+					Reads: []ReadConfig{
+						{FC: 3, Address: 0, Quantity: 10, IntervalMs: 250},
+						{FC: 3, Address: 100, Quantity: 10, IntervalMs: 5000},
+					},
+				},
+			},
+		},
+	}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }

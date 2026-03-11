@@ -32,18 +32,22 @@ replicator:
         - fc: 1
           address: 0
           quantity: 50
+          interval_ms: 1000
 
         - fc: 2
           address: 0
           quantity: 50
+          interval_ms: 1000
 
         - fc: 3
           address: 0
           quantity: 50
+          interval_ms: 1000
 
         - fc: 4
           address: 0
           quantity: 50
+          interval_ms: 1000
 
       # --------------------------------------------------------
       # TARGET (Replicator Memory + Status)
@@ -59,7 +63,4 @@ replicator:
               offsets: {}
 
       # --------------------------------------------------------
-      # POLLING
-      # --------------------------------------------------------
-      poll:
-        interval_ms: 1000
+      # POLLING removed: each read block carries its own interval_ms

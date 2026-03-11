@@ -26,17 +26,17 @@ func Build(u cfg.UnitConfig) (*Poller, func() error, error) {
 			FC:       r.FC,
 			Address:  r.Address,
 			Quantity: r.Quantity,
+			Interval: time.Duration(r.IntervalMs) * time.Millisecond,
 		})
 	}
 
 	p, err := New(
 		Config{
-			UnitID:   u.ID,
-			Interval: time.Duration(u.Poll.IntervalMs) * time.Millisecond,
-			Reads:    reads,
+			UnitID: u.ID,
+			Reads:  reads,
 		},
-		nil,      // no initial client
-		factory,  // lazy connection
+		nil,     // no initial client
+		factory, // lazy connection
 	)
 	if err != nil {
 		return nil, nil, err

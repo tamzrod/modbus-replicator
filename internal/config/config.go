@@ -34,9 +34,10 @@ type SourceConfig struct {
 // ---- READ GEOMETRY ----
 
 type ReadConfig struct {
-	FC       uint8  `yaml:"fc"`
-	Address  uint16 `yaml:"address"`
-	Quantity uint16 `yaml:"quantity"`
+	FC         uint8  `yaml:"fc"`
+	Address    uint16 `yaml:"address"`
+	Quantity   uint16 `yaml:"quantity"`
+	IntervalMs int    `yaml:"interval_ms"`
 }
 
 // ---- TARGET ----

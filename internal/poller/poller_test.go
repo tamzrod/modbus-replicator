@@ -39,13 +39,12 @@ func (f *fakeClient) ReadInputRegisters(addr, qty uint16) ([]uint16, error) {
 	return make([]uint16, qty), nil
 }
 
-func TestPollOnce_Success(t *testing.T) {
+func TestExecuteSingleRead_Success(t *testing.T) {
 	cfg := Config{
-		UnitID:   "u1",
-		Interval: 1 * time.Second,
+		UnitID: "u1",
 		Reads: []ReadBlock{
-			{FC: 1, Address: 0, Quantity: 8},
-			{FC: 3, Address: 0, Quantity: 10},
+			{FC: 1, Address: 0, Quantity: 8, Interval: time.Second},
+			{FC: 3, Address: 0, Quantity: 10, Interval: time.Second},
 		},
 	}
 
@@ -54,22 +53,25 @@ func TestPollOnce_Success(t *testing.T) {
 		t.Fatalf("New() err=%v", err)
 	}
 
-	res := p.PollOnce()
-	if res.Err != nil {
-		t.Fatalf("PollOnce err=%v", res.Err)
-	}
-	if len(res.Blocks) != 2 {
-		t.Fatalf("expected 2 blocks, got %d", len(res.Blocks))
+	for _, rb := range cfg.Reads {
+		res := p.executeSingleRead(rb)
+		if res.Err != nil {
+			t.Fatalf("executeSingleRead(%d) err=%v", rb.FC, res.Err)
+		}
+		if len(res.Blocks) != 1 {
+			t.Fatalf("expected 1 block, got %d", len(res.Blocks))
+		}
+		if res.Blocks[0].FC != rb.FC {
+			t.Fatalf("expected FC %d, got %d", rb.FC, res.Blocks[0].FC)
+		}
 	}
 }
 
-func TestPollOnce_Failure(t *testing.T) {
+func TestExecuteSingleRead_Failure(t *testing.T) {
 	cfg := Config{
-		UnitID:   "u1",
-		Interval: 1 * time.Second,
+		UnitID: "u1",
 		Reads: []ReadBlock{
-			{FC: 1, Address: 0, Quantity: 8},
-			{FC: 3, Address: 0, Quantity: 10},
+			{FC: 3, Address: 0, Quantity: 10, Interval: time.Second},
 		},
 	}
 
@@ -78,8 +80,73 @@ func TestPollOnce_Failure(t *testing.T) {
 		t.Fatalf("New() err=%v", err)
 	}
 
-	res := p.PollOnce()
+	res := p.executeSingleRead(cfg.Reads[0])
 	if res.Err == nil {
 		t.Fatalf("expected error, got nil")
 	}
 }
+
+func TestNew_RejectsZeroInterval(t *testing.T) {
+	cfg := Config{
+		UnitID: "u1",
+		Reads: []ReadBlock{
+			{FC: 3, Address: 0, Quantity: 10, Interval: 0},
+		},
+	}
+
+	_, err := New(cfg, &fakeClient{}, nil)
+	if err == nil {
+		t.Fatalf("expected error for zero interval, got nil")
+	}
+}
+
+func TestNew_RejectsEmptyUnitID(t *testing.T) {
+	cfg := Config{
+		Reads: []ReadBlock{
+			{FC: 3, Address: 0, Quantity: 10, Interval: time.Second},
+		},
+	}
+
+	_, err := New(cfg, &fakeClient{}, nil)
+	if err == nil {
+		t.Fatalf("expected error for empty unit id, got nil")
+	}
+}
+
+func TestNew_RejectsNoReads(t *testing.T) {
+	cfg := Config{
+		UnitID: "u1",
+	}
+
+	_, err := New(cfg, &fakeClient{}, nil)
+	if err == nil {
+		t.Fatalf("expected error for empty reads, got nil")
+	}
+}
+
+func TestCounters_IncrementPerRead(t *testing.T) {
+	cfg := Config{
+		UnitID: "u1",
+		Reads: []ReadBlock{
+			{FC: 1, Address: 0, Quantity: 8, Interval: time.Second},
+			{FC: 3, Address: 0, Quantity: 10, Interval: time.Second},
+		},
+	}
+
+	p, err := New(cfg, &fakeClient{}, nil)
+	if err != nil {
+		t.Fatalf("New() err=%v", err)
+	}
+
+	p.executeSingleRead(cfg.Reads[0])
+	p.executeSingleRead(cfg.Reads[1])
+
+	c := p.Counters()
+	if c.RequestsTotal != 2 {
+		t.Fatalf("expected 2 requests, got %d", c.RequestsTotal)
+	}
+	if c.ResponsesValidTotal != 2 {
+		t.Fatalf("expected 2 valid responses, got %d", c.ResponsesValidTotal)
+	}
+}
+
