@@ -1,9 +1,23 @@
 ---
-**Status:** ACTIVE
-**Purpose:** Behavioral reference audit for Aegis Puller core integration
-**Scope:** internal/poller — the canonical stable polling engine
+**Status:** ARCHIVAL
+**Purpose:** Historical behavioral reference audit (pre-refactor, per-device interval architecture)
+**Scope:** internal/poller — snapshot taken against 2026-03-09 codebase
 **Date:** 2026-03-09
+**Archived:** 2026-03-11 — superseded by per-read interval refactor
 ---
+
+> **ARCHIVAL NOTICE:** This audit was written against the pre-refactor architecture in which polling was
+> scheduled at the **device level** via a single `poll.interval_ms` field, all read blocks shared one
+> interval, and `PollOnce()` executed all reads as a single all-or-nothing cycle.
+>
+> The architecture has since changed. The current implementation uses **per-read scheduling**:
+> each read block carries its own `interval_ms`, is scheduled independently, and produces its own
+> `PollResult` via `executeSingleRead()`. The device-level `poll.interval_ms` field is rejected at
+> validation. See `docs/ARCHITECTURE.md` and `docs/CONFIG.md` for the normative current model.
+>
+> Invariants **I-2**, **I-3**, **I-4**, **I-6**, **I-7**, and **I-8** remain valid.
+> Invariant **I-5** ("Polling interval is per-device") is superseded — interval is now per-read-block.
+> Code line references throughout this document point to the pre-refactor codebase and may be stale.
 
 # Replicator Engine Behavior Audit
 

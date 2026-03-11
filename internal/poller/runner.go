@@ -24,7 +24,9 @@ func (p *Poller) Run(ctx context.Context, out chan<- PollResult) {
 		now := time.Now()
 
 		// nextWake tracks the earliest time any read is due after this iteration.
-		nextWake := now.Add(time.Hour)
+		// Initialized to a far-future sentinel; overwritten once any schedule is evaluated.
+		const maxWaitInterval = time.Hour
+		nextWake := now.Add(maxWaitInterval)
 
 		for i := range p.schedules {
 			if now.Before(p.schedules[i].nextExec) {

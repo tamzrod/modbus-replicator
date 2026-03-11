@@ -3,8 +3,8 @@ package poller
 
 import (
 	"errors"
+	"fmt"
 	"net"
-	"strconv"
 	"strings"
 	"time"
 )
@@ -53,7 +53,7 @@ func New(cfg Config, client Client, factory func() (Client, error)) (*Poller, er
 	}
 	for i, rb := range cfg.Reads {
 		if rb.Interval <= 0 {
-			return nil, errors.New("poller: reads[" + strconv.Itoa(i) + "].interval must be > 0")
+			return nil, fmt.Errorf("poller: reads[%d].interval must be > 0", i)
 		}
 	}
 
