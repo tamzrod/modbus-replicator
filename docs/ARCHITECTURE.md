@@ -1,6 +1,6 @@
 # Modbus Replicator – Architecture
 
-Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+Version Note: 2026-04-13 (Documentation audit; connection lifecycle added to Poller section)
 
 ## Overview
 
@@ -47,6 +47,14 @@ Poller behavior as implemented:
 * On error, returns immediately with `PollResult.Err`.
 * Performs no retry loop inside `PollOnce()`.
 * Maintains lifetime transport counters (`requests_total`, `responses_valid_total`, `timeouts_total`, `transport_errors_total`, `consecutive_fail_current`, `consecutive_fail_max`).
+
+Connection lifecycle as implemented:
+
+* No dial occurs at startup; the initial client is nil.
+* On each poll cycle where the client is nil, one connection attempt is made via the factory.
+* If the factory fails, the failure is recorded as a poll failure and the cycle returns immediately without executing reads.
+* On "dead connection" errors (EOF, broken pipe, connection reset, connection aborted, use of closed network connection), the client is discarded and set to nil so the next poll tick may reconnect.
+* On timeout errors, the client is **not** discarded and is reused on the next poll tick.
 
 ### 2. Writer
 

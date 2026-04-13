@@ -1,6 +1,6 @@
 # Device Status Block --- Layout Specification
 
-Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+Version Note: 2026-04-13 (Documentation audit; Slot 2 write strategy corrected to reflect value-change trigger)
 
 Authority Note: This document defines the authoritative specification for externally observable behavior.
 
@@ -138,7 +138,7 @@ Incremental updates:
 
 -   Slot 0 → on health change\
 -   Slot 1 → on error change\
--   Slot 2 → once per second while in error\
+-   Slot 2 → on value change (increments once per second while health != OK; resets to 0 on recovery)\
 -   Slots 20--29 → updated when their values change
 
 Device name (Slots 3--10) is written in full-block path only.

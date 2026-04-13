@@ -1,6 +1,6 @@
 # Modbus Replicator — Configuration Model
 
-Version Note: 2026-03-03 (Stage 4 documentation rectification; synchronized to implemented behavior)
+Version Note: 2026-04-13 (Documentation audit; timeout_ms scope clarified)
 
 LEGACY NOTICE: This document previously defined a global `replicator.Status_Memory` model. That topology is removed from implementation and is retained here only as historical context. The normative model below reflects current code.
 
@@ -96,7 +96,7 @@ Fields:
 
 * `endpoint` (`string`)
 * `unit_id` (`uint8`)
-* `timeout_ms` (`int`)
+* `timeout_ms` (`int`) — applies to both source Modbus reads and Raw Ingest writes to all targets
 * `device_name` (`string`, optional, ASCII-only validation)
 * `status_slot` (`*uint16`, optional, opt-in status)
 
