@@ -34,10 +34,11 @@ type SourceConfig struct {
 // ---- READ GEOMETRY ----
 
 type ReadConfig struct {
-	FC       uint8  `yaml:"fc"`
-	Address  uint16 `yaml:"address"`
-	Quantity uint16 `yaml:"quantity"`
-	Invert   bool   `yaml:"invert"`
+	FC        uint8  `yaml:"fc"`
+	Address   uint16 `yaml:"address"`
+	Quantity  uint16 `yaml:"quantity"`
+	Invert    bool   `yaml:"invert"`
+	AddInvert bool   `yaml:"addinvert"`
 }
 
 // ---- TARGET ----
