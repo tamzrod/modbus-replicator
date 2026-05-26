@@ -1,6 +1,6 @@
 # Modbus Replicator — Configuration Model
 
-Version Note: 2026-04-13 (Documentation audit; timeout_ms scope clarified)
+Version Note: 2026-05-26 (Added `addinvert` read-block documentation)
 
 LEGACY NOTICE: This document previously defined a global `replicator.Status_Memory` model. That topology is removed from implementation and is retained here only as historical context. The normative model below reflects current code.
 
@@ -45,6 +45,7 @@ replicator:
           address: 0
           quantity: 32
           invert: true
+          addinvert: true
         - fc: 3
           address: 0
           quantity: 50
@@ -116,11 +117,12 @@ reads:
     address: 0
     quantity: 32
     invert: true   # optional; only meaningful for FC1 and FC2
+    addinvert: true # optional; append inverted copy after the original block
 
   - fc: 3
     address: 0
     quantity: 50
-    # invert silently ignored for FC3/FC4 — no overhead
+    # invert/addinvert silently ignored for FC3/FC4 — no overhead
 ```
 
 Read definitions per poll cycle.
@@ -131,6 +133,15 @@ Fields:
 * `address` (`uint16`) — starting register/coil address
 * `quantity` (`uint16`) — number of coils or registers to read
 * `invert` (`bool`, optional, default `false`) — flip every bit after reading; **only applies to FC1 and FC2**; silently ignored for FC3 and FC4 with zero runtime overhead
+* `addinvert` (`bool`, optional, default `false`) — for **FC1 and FC2 only**, write the original block first and then append an inverted copy immediately after it in MMA; ignored for FC3 and FC4 with zero runtime overhead
+
+When `addinvert: true`:
+
+* Original block occupies `base_offset + address` → `base_offset + address + quantity - 1`
+* Appended inverted block occupies `base_offset + address + quantity` → `base_offset + address + (2 * quantity) - 1`
+* `invert` and `addinvert` remain independent:
+  * `invert` transforms the primary FC1/FC2 view
+  * `addinvert` duplicates and appends the inverse of that primary view
 
 ---
 
@@ -186,6 +197,7 @@ Additional implemented checks:
 
 * `source.device_name` must be ASCII-only.
 * Destination memory overlap is rejected per `(endpoint, memory_id, fc)` range.
+* For FC1/FC2 reads with `addinvert: true`, overlap detection uses the expanded `2 * quantity` footprint.
 
 ---
 
