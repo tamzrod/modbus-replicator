@@ -22,11 +22,17 @@ func Build(u cfg.UnitConfig) (*Poller, func() error, error) {
 
 	reads := make([]ReadBlock, 0, len(u.Reads))
 	for _, r := range u.Reads {
-		reads = append(reads, ReadBlock{
+		rb := ReadBlock{
 			FC:       r.FC,
 			Address:  r.Address,
 			Quantity: r.Quantity,
-		})
+		}
+		// Invert is only applicable to digital FCs (1 and 2).
+		// Silently ignore it for all other function codes.
+		if r.FC == 1 || r.FC == 2 {
+			rb.Invert = r.Invert
+		}
+		reads = append(reads, rb)
 	}
 
 	p, err := New(
