@@ -104,6 +104,11 @@ func (p *Poller) PollOnce() PollResult {
 				p.recordFailure(err)
 				return res
 			}
+			if rb.Invert {
+				for i := range bits {
+					bits[i] = !bits[i]
+				}
+			}
 			blocks = append(blocks, BlockResult{
 				FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Bits: bits,
 			})
@@ -115,6 +120,11 @@ func (p *Poller) PollOnce() PollResult {
 				res.Err = err
 				p.recordFailure(err)
 				return res
+			}
+			if rb.Invert {
+				for i := range bits {
+					bits[i] = !bits[i]
+				}
 			}
 			blocks = append(blocks, BlockResult{
 				FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Bits: bits,

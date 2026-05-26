@@ -9,6 +9,10 @@ type ReadBlock struct {
 	FC       uint8
 	Address  uint16
 	Quantity uint16
+
+	// Invert is only meaningful for digital FCs (1 and 2).
+	// For FC3/FC4 it is never set and never checked.
+	Invert bool
 }
 
 // BlockResult is the raw result of a single read.
