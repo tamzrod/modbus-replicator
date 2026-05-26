@@ -41,6 +41,10 @@ replicator:
         device_name: "SCB01"
         status_slot: 1
       reads:
+        - fc: 1
+          address: 0
+          quantity: 32
+          invert: true
         - fc: 3
           address: 0
           quantity: 50
@@ -108,12 +112,25 @@ If `status_slot` is omitted, no status writers are built for that unit.
 
 ```yaml
 reads:
+  - fc: 1
+    address: 0
+    quantity: 32
+    invert: true   # optional; only meaningful for FC1 and FC2
+
   - fc: 3
     address: 0
     quantity: 50
+    # invert silently ignored for FC3/FC4 — no overhead
 ```
 
-Geometry-only read definitions per poll cycle.
+Read definitions per poll cycle.
+
+Fields:
+
+* `fc` (`uint8`) — Modbus function code: 1 (Coils), 2 (Discrete Inputs), 3 (Holding Registers), 4 (Input Registers)
+* `address` (`uint16`) — starting register/coil address
+* `quantity` (`uint16`) — number of coils or registers to read
+* `invert` (`bool`, optional, default `false`) — flip every bit after reading; **only applies to FC1 and FC2**; silently ignored for FC3 and FC4 with zero runtime overhead
 
 ---
 

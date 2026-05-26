@@ -21,14 +21,17 @@ replicator:
         - fc: 1
           address: 0
           quantity: 128
+          invert: true    # optional: flip all bits after read (FC1/FC2 only)
 
         - fc: 2
           address: 0
           quantity: 128
+          invert: false   # default; same as omitting the field
 
         - fc: 3
           address: 0
           quantity: 125
+          # invert not applicable — silently ignored for FC3/FC4
 
         - fc: 4
           address: 0
