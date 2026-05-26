@@ -102,6 +102,11 @@ func Validate(cfg *Config) error {
 
 					start := offset + r.Address
 					end := start + r.Quantity - 1
+					// addinvert appends an inverted copy immediately after the original block,
+					// doubling the destination footprint for FC1/FC2.
+					if (r.FC == 1 || r.FC == 2) && r.AddInvert {
+						end = start + 2*r.Quantity - 1
+					}
 
 					key := fmt.Sprintf("%s|%d|%d", t.Endpoint, m.MemoryID, r.FC)
 

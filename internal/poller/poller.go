@@ -112,6 +112,15 @@ func (p *Poller) PollOnce() PollResult {
 			blocks = append(blocks, BlockResult{
 				FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Bits: bits,
 			})
+			if rb.AddInvert {
+				invBits := make([]bool, rb.Quantity)
+				for i, v := range bits {
+					invBits[i] = !v
+				}
+				blocks = append(blocks, BlockResult{
+					FC: rb.FC, Address: rb.Address + rb.Quantity, Quantity: rb.Quantity, Bits: invBits,
+				})
+			}
 
 		case 2:
 			bits, err := p.client.ReadDiscreteInputs(rb.Address, rb.Quantity)
@@ -129,6 +138,15 @@ func (p *Poller) PollOnce() PollResult {
 			blocks = append(blocks, BlockResult{
 				FC: rb.FC, Address: rb.Address, Quantity: rb.Quantity, Bits: bits,
 			})
+			if rb.AddInvert {
+				invBits := make([]bool, rb.Quantity)
+				for i, v := range bits {
+					invBits[i] = !v
+				}
+				blocks = append(blocks, BlockResult{
+					FC: rb.FC, Address: rb.Address + rb.Quantity, Quantity: rb.Quantity, Bits: invBits,
+				})
+			}
 
 		case 3:
 			regs, err := p.client.ReadHoldingRegisters(rb.Address, rb.Quantity)

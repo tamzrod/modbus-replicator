@@ -27,10 +27,11 @@ func Build(u cfg.UnitConfig) (*Poller, func() error, error) {
 			Address:  r.Address,
 			Quantity: r.Quantity,
 		}
-		// Invert is only applicable to digital FCs (1 and 2).
-		// Silently ignore it for all other function codes.
+		// Invert and AddInvert are only applicable to digital FCs (1 and 2).
+		// Silently ignore them for all other function codes.
 		if r.FC == 1 || r.FC == 2 {
 			rb.Invert = r.Invert
+			rb.AddInvert = r.AddInvert
 		}
 		reads = append(reads, rb)
 	}
