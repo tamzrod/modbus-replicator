@@ -84,7 +84,7 @@ func TestValidate_TouchingRangesAllowed(t *testing.T) {
 	cfg := &Config{
 		Replicator: ReplicatorConfig{
 			Units: []UnitConfig{
-				unit("u1", "ep1", 0, 3, 0, 10, 0),   // 0–9
+				unit("u1", "ep1", 0, 3, 0, 10, 0),  // 0–9
 				unit("u2", "ep1", 0, 3, 10, 10, 0), // 10–19
 			},
 		},
@@ -114,8 +114,8 @@ func TestValidate_OverlapViaOffsetDetected(t *testing.T) {
 	cfg := &Config{
 		Replicator: ReplicatorConfig{
 			Units: []UnitConfig{
-				unit("u1", "ep1", 0, 3, 0, 10, 0),   // 0–9
-				unit("u2", "ep1", 0, 3, 0, 10, 5),  // 5–14 → overlap
+				unit("u1", "ep1", 0, 3, 0, 10, 0), // 0–9
+				unit("u2", "ep1", 0, 3, 0, 10, 5), // 5–14 → overlap
 			},
 		},
 	}

@@ -7,7 +7,6 @@ import (
 	"time"
 
 	"github.com/tamzrod/modbus-replicator/internal/poller"
-
 )
 
 // ------------------------------------------------------------------
@@ -19,10 +18,10 @@ type fakeEndpointClient struct {
 
 	lastBitsArea   byte
 	lastBitsUnitID uint8
-	lastBitsAddr uint16
-	lastRegsAddr  uint16
-	lastRegs      []uint16
-	lastBits      []bool
+	lastBitsAddr   uint16
+	lastRegsAddr   uint16
+	lastRegs       []uint16
+	lastBits       []bool
 
 	writeBitsCnt int
 	writeRegsCnt int
