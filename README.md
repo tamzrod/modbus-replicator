@@ -117,6 +117,7 @@ Configuration is **explicit and validated**:
 See:
 
 * `docs/CONFIG.md`
+* `docs/MODBUS_REPLICATOR_MANUAL.md`
 * `internal/config/`
 
 ---
