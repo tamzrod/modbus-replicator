@@ -7,6 +7,8 @@ import (
 	"github.com/tamzrod/modbus-replicator/internal/status"
 )
 
+const healthOutputAreaCoil byte = 1
+
 type HealthOutputWriter interface {
 	PublishHealth(health uint16) error
 }

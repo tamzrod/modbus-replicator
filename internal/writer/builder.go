@@ -41,7 +41,7 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 			plan.HealthOutputs = append(plan.HealthOutputs, HealthOutputPlan{
 				Endpoint: t.Endpoint,
 				UnitID:   t.UnitID,
-				Area:     1,
+				Area:     healthOutputAreaCoil,
 				Address:  *t.HealthOutput.Address,
 				UnitName: u.ID,
 			})
