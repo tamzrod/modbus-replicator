@@ -14,7 +14,7 @@ Implemented today:
 - FC1, FC2, FC3, and FC4 reads
 - Fan-out writes to one or more targets
 - Optional per-target status publishing
-- Optional per-target health coil publishing
+- Optional per-target health control output (coil)
 - Configuration validation before startup
 
 Not implemented today:
@@ -93,6 +93,12 @@ Each memory mapping contains:
 
 - `memory_id`: destination MMA memory
 - `offsets`: per-function-code offset map
+
+Health control constraints when `health_output.enabled: true`:
+
+- `health_output.area` must be `coil`
+- `health_output.address` is required
+- collision is rejected for duplicate `(endpoint, unit_id, area, address)` across units
 
 ### Poll
 
@@ -175,8 +181,17 @@ Detailed status layout is documented in:
 Current behavior:
 
 - only `area: coil` is supported
-- published value is `1` when health is `OK`
-- published value is `0` when health is not `OK`
+- published value is mapped from runtime health:
+  - `OK` -> `1`
+  - `ERROR` -> `0`
+  - `UNKNOWN` -> `0`
+  - `STALE` -> `0`
+  - `DISABLED` -> `0`
+- writes are edge-triggered by the mapped output value:
+  - non-OK -> non-OK does not publish again
+  - OK -> OK does not publish again
+  - transitions between mapped outputs (`0 <-> 1`) publish once
+- if a publish fails, the last published state is not advanced; the next call retries the same mapped value
 - publish failures are logged and do not stop replication
 
 ## Operational Notes
