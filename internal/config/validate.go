@@ -21,6 +21,8 @@ func Validate(cfg *Config) error {
 
 	// key = endpoint | status_unit_id | status_slot
 	statusOwner := make(map[string]string)
+	// key = endpoint | unit_id | area | address
+	healthOutputOwner := make(map[string]string)
 
 	for _, u := range cfg.Replicator.Units {
 		// device_name sanity (ASCII only)
@@ -35,24 +37,21 @@ func Validate(cfg *Config) error {
 			}
 		}
 
-		// status is opt-in
-		if u.Source.StatusSlot == nil {
-			continue
-		}
-
-		// status requires at least one target
-		if len(u.Targets) == 0 {
+		statusEnabled := u.Source.StatusSlot != nil
+		if statusEnabled && len(u.Targets) == 0 {
 			return fmt.Errorf(
 				"unit %q: status_slot is set but no targets are defined",
 				u.ID,
 			)
 		}
 
-		slot := *u.Source.StatusSlot
+		var slot uint16
+		if statusEnabled {
+			slot = *u.Source.StatusSlot
+		}
 
 		for _, t := range u.Targets {
-			// each target must declare status_unit_id
-			if t.StatusUnitID == nil {
+			if statusEnabled && t.StatusUnitID == nil {
 				return fmt.Errorf(
 					"unit %q: status_slot is set but target %q has no status_unit_id",
 					u.ID,
@@ -60,25 +59,70 @@ func Validate(cfg *Config) error {
 				)
 			}
 
-			key := fmt.Sprintf(
-				"%s|%d|%d",
-				t.Endpoint,
-				*t.StatusUnitID,
-				slot,
-			)
-
-			if prev, exists := statusOwner[key]; exists {
-				return fmt.Errorf(
-					"status_slot collision: endpoint=%s status_unit_id=%d slot=%d used by units %q and %q",
+			if statusEnabled {
+				key := fmt.Sprintf(
+					"%s|%d|%d",
 					t.Endpoint,
 					*t.StatusUnitID,
 					slot,
+				)
+
+				if prev, exists := statusOwner[key]; exists {
+					return fmt.Errorf(
+						"status_slot collision: endpoint=%s status_unit_id=%d slot=%d used by units %q and %q",
+						t.Endpoint,
+						*t.StatusUnitID,
+						slot,
+						prev,
+						u.ID,
+					)
+				}
+
+				statusOwner[key] = u.ID
+			}
+
+			if t.HealthOutput == nil || !t.HealthOutput.Enabled {
+				continue
+			}
+
+			if t.HealthOutput.Area != "coil" {
+				return fmt.Errorf(
+					"unit %q: target %q health_output.area must be %q",
+					u.ID,
+					t.Endpoint,
+					"coil",
+				)
+			}
+
+			if t.HealthOutput.Address == nil {
+				return fmt.Errorf(
+					"unit %q: target %q health_output.address is required when enabled",
+					u.ID,
+					t.Endpoint,
+				)
+			}
+
+			key := fmt.Sprintf(
+				"%s|%d|%s|%d",
+				t.Endpoint,
+				t.UnitID,
+				t.HealthOutput.Area,
+				*t.HealthOutput.Address,
+			)
+
+			if prev, exists := healthOutputOwner[key]; exists {
+				return fmt.Errorf(
+					"health_output collision: endpoint=%s unit_id=%d area=%s address=%d used by units %q and %q",
+					t.Endpoint,
+					t.UnitID,
+					t.HealthOutput.Area,
+					*t.HealthOutput.Address,
 					prev,
 					u.ID,
 				)
 			}
 
-			statusOwner[key] = u.ID
+			healthOutputOwner[key] = u.ID
 		}
 	}
 

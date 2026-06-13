@@ -90,6 +90,16 @@ func deepCopyUnit(u UnitConfig) UnitConfig {
 				tc.StatusUnitID = &v
 			}
 
+			// Deep copy HealthOutput config and nested Address pointer.
+			if t.HealthOutput != nil {
+				hc := *t.HealthOutput
+				if t.HealthOutput.Address != nil {
+					v := *t.HealthOutput.Address
+					hc.Address = &v
+				}
+				tc.HealthOutput = &hc
+			}
+
 			// Deep copy Memories.
 			if t.Memories != nil {
 				tc.Memories = make([]MemoryConfig, len(t.Memories))

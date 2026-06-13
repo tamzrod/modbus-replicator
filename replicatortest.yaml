@@ -54,6 +54,10 @@ replicator:
           endpoint: "127.0.0.1:502"
           unit_id: 2                # DATA memory
           status_unit_id: 3         # STATUS memory (was global before)
+          health_output:
+            enabled: true
+            area: coil
+            address: 99
 
           memories:
             - memory_id: 2

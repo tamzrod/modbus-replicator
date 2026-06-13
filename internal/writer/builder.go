@@ -36,6 +36,16 @@ func BuildPlan(u cfg.UnitConfig) (Plan, error) {
 		}
 
 		plan.Targets = append(plan.Targets, ep)
+
+		if t.HealthOutput != nil && t.HealthOutput.Enabled && t.HealthOutput.Address != nil {
+			plan.HealthOutputs = append(plan.HealthOutputs, HealthOutputPlan{
+				Endpoint: t.Endpoint,
+				UnitID:   t.UnitID,
+				Area:     healthOutputAreaCoil,
+				Address:  *t.HealthOutput.Address,
+				UnitName: u.ID,
+			})
+		}
 	}
 
 	// ------------------------------------------------------------

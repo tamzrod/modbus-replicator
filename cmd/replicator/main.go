@@ -62,6 +62,7 @@ func main() {
 
 		dataWriter := writer.New(plan, clients)
 		statusWriters := writer.NewDeviceStatusWriters(plan, clients)
+		healthOutputWriters := writer.NewHealthOutputWriters(plan, clients)
 
 		out := make(chan poller.PollResult)
 
@@ -91,7 +92,7 @@ func main() {
 						log.Printf("writer error (unit=%s): %v", unitID, err)
 					}
 
-					if len(statusWriters) == 0 {
+					if len(statusWriters) == 0 && len(healthOutputWriters) == 0 {
 						continue
 					}
 
@@ -123,6 +124,12 @@ func main() {
 						if snap.LastErrorCode != code {
 							snap.LastErrorCode = code
 							changed = true
+						}
+					}
+
+					for _, hw := range healthOutputWriters {
+						if err := hw.PublishHealth(snap.Health); err != nil {
+							log.Printf("%v", err)
 						}
 					}
 

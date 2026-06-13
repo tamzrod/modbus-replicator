@@ -24,11 +24,20 @@ type StatusPlan struct {
 	DeviceName string
 }
 
+type HealthOutputPlan struct {
+	Endpoint string
+	UnitID   uint8
+	Area     byte
+	Address  uint16
+	UnitName string
+}
+
 // Plan is the fully-built write plan for one unit.
 type Plan struct {
-	UnitID  string
-	Targets []TargetEndpoint
-	Status  []StatusPlan // per-target status (hot-standby replication)
+	UnitID        string
+	Targets       []TargetEndpoint
+	Status        []StatusPlan       // per-target status (hot-standby replication)
+	HealthOutputs []HealthOutputPlan // per-target health output
 }
 
 // Writer writes poll snapshots into targets.
