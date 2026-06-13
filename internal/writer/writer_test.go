@@ -17,10 +17,12 @@ import (
 type fakeEndpointClient struct {
 	writeErr error
 
+	lastBitsArea   byte
+	lastBitsUnitID uint8
 	lastBitsAddr uint16
-	lastRegsAddr uint16
-	lastRegs     []uint16
-	lastBits     []bool
+	lastRegsAddr  uint16
+	lastRegs      []uint16
+	lastBits      []bool
 
 	writeBitsCnt int
 	writeRegsCnt int
@@ -28,6 +30,8 @@ type fakeEndpointClient struct {
 
 func (f *fakeEndpointClient) WriteBits(area byte, unitID uint8, addr uint16, bits []bool) error {
 	f.writeBitsCnt++
+	f.lastBitsArea = area
+	f.lastBitsUnitID = unitID
 	f.lastBitsAddr = addr
 	f.lastBits = bits
 	return f.writeErr

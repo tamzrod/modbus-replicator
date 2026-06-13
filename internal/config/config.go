@@ -44,16 +44,23 @@ type ReadConfig struct {
 // ---- TARGET ----
 
 type TargetConfig struct {
-	ID           uint32         `yaml:"id"`
-	Endpoint     string         `yaml:"endpoint"`
-	UnitID       uint8          `yaml:"unit_id"`        // data memory
-	StatusUnitID *uint8         `yaml:"status_unit_id"` // per-target status memory (optional)
-	Memories     []MemoryConfig `yaml:"memories"`
+	ID           uint32              `yaml:"id"`
+	Endpoint     string              `yaml:"endpoint"`
+	UnitID       uint8               `yaml:"unit_id"`        // data memory
+	StatusUnitID *uint8              `yaml:"status_unit_id"` // per-target status memory (optional)
+	HealthOutput *HealthOutputConfig `yaml:"health_output"`
+	Memories     []MemoryConfig      `yaml:"memories"`
 }
 
 type MemoryConfig struct {
 	MemoryID uint16         `yaml:"memory_id"`
 	Offsets  map[int]uint16 `yaml:"offsets"` // delta map; missing FC => 0
+}
+
+type HealthOutputConfig struct {
+	Enabled bool    `yaml:"enabled"`
+	Area    string  `yaml:"area"`
+	Address *uint16 `yaml:"address"`
 }
 
 // ---- POLL ----

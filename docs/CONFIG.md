@@ -54,6 +54,10 @@ replicator:
           endpoint: "10.5.1.20:501"
           unit_id: 2
           status_unit_id: 35
+          health_output:
+            enabled: true
+            area: coil
+            address: 99
           memories:
             - memory_id: 1
               offsets: {}
@@ -153,6 +157,10 @@ targets:
     endpoint: "10.5.1.20:501"
     unit_id: 2
     status_unit_id: 35
+    health_output:
+      enabled: true
+      area: coil
+      address: 99
     memories:
       - memory_id: 1
         offsets: {}
@@ -164,7 +172,26 @@ Implemented fields:
 * `endpoint` (`string`)
 * `unit_id` (`uint8`) for data writes
 * `status_unit_id` (`*uint8`) for status writes when source status is enabled
+* `health_output` (`object`, optional) for edge-triggered Raw Ingest health publishing
 * `memories[]` with `memory_id` (`uint16`) and `offsets` (`map[int]uint16`)
+
+### Per-target health output
+
+`health_output` is disabled unless `enabled: true` is set.
+
+Implemented fields:
+
+* `enabled` (`bool`) — opt in to publishing the unit health as a Raw Ingest output
+* `area` (`string`) — must be `coil`
+* `address` (`*uint16`) — destination coil address in the target `unit_id`
+
+Behavior:
+
+* Source of truth is the runtime status snapshot `health_code`
+* `health_code == OK` publishes coil value `1`
+* `health_code != OK` publishes coil value `0`
+* Writes are edge-triggered by the published value and use the existing Raw Ingest bit writer
+* Publish failures are logged and do not stop replication
 
 ### Per-target status destination
 

@@ -3,6 +3,8 @@ package config
 
 import "testing"
 
+func u16ptr(v uint16) *uint16 { return &v }
+
 // helper to build a unit quickly
 func unit(id string, endpoint string, memoryID uint16, fc uint8, addr, qty uint16, offset uint16) UnitConfig {
 	return UnitConfig{
@@ -120,5 +122,129 @@ func TestValidate_OverlapViaOffsetDetected(t *testing.T) {
 
 	if err := Validate(cfg); err == nil {
 		t.Fatalf("expected overlap error, got nil")
+	}
+}
+
+func TestValidate_HealthOutputDisabledIsAllowed(t *testing.T) {
+	cfg := &Config{
+		Replicator: ReplicatorConfig{
+			Units: []UnitConfig{
+				{
+					ID: "u1",
+					Targets: []TargetConfig{
+						{
+							ID:       1,
+							Endpoint: "ep1",
+							UnitID:   2,
+							HealthOutput: &HealthOutputConfig{
+								Enabled: false,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := Validate(cfg); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidate_HealthOutputRequiresCoilAreaWhenEnabled(t *testing.T) {
+	cfg := &Config{
+		Replicator: ReplicatorConfig{
+			Units: []UnitConfig{
+				{
+					ID: "u1",
+					Targets: []TargetConfig{
+						{
+							ID:       1,
+							Endpoint: "ep1",
+							UnitID:   2,
+							HealthOutput: &HealthOutputConfig{
+								Enabled: true,
+								Area:    "holding_register",
+								Address: u16ptr(99),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestValidate_HealthOutputRequiresAddressWhenEnabled(t *testing.T) {
+	cfg := &Config{
+		Replicator: ReplicatorConfig{
+			Units: []UnitConfig{
+				{
+					ID: "u1",
+					Targets: []TargetConfig{
+						{
+							ID:       1,
+							Endpoint: "ep1",
+							UnitID:   2,
+							HealthOutput: &HealthOutputConfig{
+								Enabled: true,
+								Area:    "coil",
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestValidate_HealthOutputCollisionDetected(t *testing.T) {
+	cfg := &Config{
+		Replicator: ReplicatorConfig{
+			Units: []UnitConfig{
+				{
+					ID: "u1",
+					Targets: []TargetConfig{
+						{
+							ID:       1,
+							Endpoint: "ep1",
+							UnitID:   2,
+							HealthOutput: &HealthOutputConfig{
+								Enabled: true,
+								Area:    "coil",
+								Address: u16ptr(99),
+							},
+						},
+					},
+				},
+				{
+					ID: "u2",
+					Targets: []TargetConfig{
+						{
+							ID:       2,
+							Endpoint: "ep1",
+							UnitID:   2,
+							HealthOutput: &HealthOutputConfig{
+								Enabled: true,
+								Area:    "coil",
+								Address: u16ptr(99),
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	if err := Validate(cfg); err == nil {
+		t.Fatal("expected collision error")
 	}
 }
